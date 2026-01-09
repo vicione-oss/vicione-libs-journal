@@ -1,6 +1,4 @@
-using System.Collections.Generic;
-
-namespace ViciOne.Journal;
+﻿namespace ViciOne.Journal;
 
 internal sealed class SpamKeyComparer : IEqualityComparer<SpamKey>
 {

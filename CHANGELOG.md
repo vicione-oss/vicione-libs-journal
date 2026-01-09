@@ -10,6 +10,11 @@
 ### Fixed
 
 - Handle empty Entries
+- Make JournalLogger entry creation thread safe
+- Free cursor pointer of systemd journal after use
+- Avoid using invalid field names
+- Use UTF-8 everywhere instead of ANSI
+- Avoid GC collection of intermediate objects when writing log entries
 
 ## 0.7.0 - 2025-07-01
 

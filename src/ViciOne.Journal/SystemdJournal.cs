@@ -696,16 +696,23 @@ internal sealed partial class SystemdJournal : IDisposable
             var ret = SafeNativeCall(handle => NativeMethods.sd_journal_get_cursor(handle, out cursorPtr));
             CheckNativeResult(ret, "sd_journal_get_cursor");
 
-            // Convert the pointer to a string.
-            var cursor = cursorPtr == IntPtr.Zero
-                ? string.Empty
-                : Marshal.PtrToStringUTF8(cursorPtr)?.Trim() ?? string.Empty;
+            try
+            {
+                var cursor = cursorPtr == IntPtr.Zero
+                    ? string.Empty
+                    : Marshal.PtrToStringUTF8(cursorPtr)?.Trim() ?? string.Empty;
 
-            if (cursor.Contains('\0', StringComparison.Ordinal))
-                throw new JournalException("Invalid cursor: Contains null characters.", -1);
-            if (cursor.Length > 512)
-                throw new JournalException("Cursor is too long. Maximum 512 characters allowed.", -1);
-            return cursor;
+                if (cursor.Contains('\0', StringComparison.Ordinal))
+                    throw new JournalException("Invalid cursor: Contains null characters.", -1);
+                if (cursor.Length > 512)
+                    throw new JournalException("Cursor is too long. Maximum 512 characters allowed.", -1);
+
+                return cursor;
+            }
+            finally
+            {
+                NativeMethods.free(cursorPtr);
+            }
         }
     }
 
@@ -784,7 +791,7 @@ internal sealed partial class SystemdJournal : IDisposable
 
                 if (dataPtr != IntPtr.Zero)
                 {
-                    var field = Marshal.PtrToStringAnsi(dataPtr)?.Trim() ?? string.Empty;
+                    var field = Marshal.PtrToStringUTF8(dataPtr)?.Trim() ?? string.Empty;
                     if (string.IsNullOrWhiteSpace(field))
                         continue;
                     if (!FieldRegex().IsMatch(field))
@@ -1037,7 +1044,7 @@ internal sealed partial class SystemdJournal : IDisposable
                     continue;
 
                 // The returned string has the format "_PRIORITY=<value>\0"
-                var data = Marshal.PtrToStringAnsi(dataPtr, (int)length)?.Trim() ?? string.Empty;
+                var data = Marshal.PtrToStringUTF8(dataPtr, (int)length)?.Trim() ?? string.Empty;
 
                 var equalIndex = data.IndexOf('=', StringComparison.Ordinal);
                 if (equalIndex >= 0 && equalIndex < data.Length - 1)
@@ -1124,6 +1131,6 @@ internal sealed partial class SystemdJournal : IDisposable
         return utcTime;
     }
 
-    [GeneratedRegex(@"^[_A-Z0-9]+$", RegexOptions.Compiled)]
-    private static partial Regex FieldRegex();
+    [GeneratedRegex(@"^(?!.*__)(?=.*[A-Z0-9])[A-Z0-9_]+$", RegexOptions.Compiled)]
+    internal static partial Regex FieldRegex();
 }

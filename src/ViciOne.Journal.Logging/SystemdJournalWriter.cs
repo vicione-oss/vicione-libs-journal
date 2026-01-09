@@ -29,33 +29,43 @@ internal class SystemdJournalWriter : IDisposable
 
     public void WriteEntry(IReadOnlyDictionary<string, object?> args)
     {
-        var iovecs = CreateIoVectors(args);
+        if (args.Count == 0)
+            return;
 
-        lock (_syncLock)
-        {
-            var ret = SafeNativeCall(handler => NativeMethods.sd_journal_sendv(iovecs, (UIntPtr)iovecs.Length));
-            CheckNativeResult(ret, nameof(NativeMethods.sd_journal_sendv));
-        }
-    }
-
-    private static IOVector[] CreateIoVectors(IReadOnlyDictionary<string, object?> args)
-    {
         var iovecs = new IOVector[args.Count];
+        var handles = new GCHandle[args.Count];
+        var i = 0;
 
-        for (var i = 0; i < args.Count; i++)
-            iovecs[i] = CreateIoVectorFromString(args.ElementAt(i));
+        try
+        {
+            foreach (var (field, value) in args)
+            {
+                var bytes = Encoding.UTF8.GetBytes($"{field}={value}");
+                handles[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 
-        return iovecs;
-    }
+                iovecs[i] = new IOVector
+                {
+                    iov_base = handles[i].AddrOfPinnedObject(),
+                    iov_len = (UIntPtr)bytes.Length
+                };
 
-    private static IOVector CreateIoVectorFromString(KeyValuePair<string, object?> pair)
-    {
-        var byteArray = Encoding.UTF8.GetBytes($"{pair.Key}={pair.Value}");
-        IOVector iov;
-        iov.iov_base = Marshal.UnsafeAddrOfPinnedArrayElement(byteArray, 0);
-        iov.iov_len = (UIntPtr)byteArray.Length;
+                i++;
+            }
 
-        return iov;
+            lock (_syncLock)
+            {
+                var ret = NativeMethods.sd_journal_sendv(iovecs, (UIntPtr)i);
+                CheckNativeResult(ret, nameof(NativeMethods.sd_journal_sendv));
+            }
+        }
+        finally
+        {
+            for (var j = 0; j < i; j++)
+            {
+                if (handles[j].IsAllocated)
+                    handles[j].Free();
+            }
+        }
     }
 
     private T SafeNativeCall<T>(Func<IntPtr, T> nativeCall)

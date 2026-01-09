@@ -1,0 +1,51 @@
+include:
+  - project: 'acx/tooling/templates'
+    file: '/CI-Templates/v2/dotnet.yml'
+
+default:
+  image: mcr.microsoft.com/dotnet/sdk:9.0
+
+Build:
+  extends: .dotnet-build
+
+xUnit:
+  extends: .dotnet-test-xunit
+  artifacts:
+    reports:
+      junit: artifacts/tests/*-test-report.xml
+
+Deploy Journal NuGet:
+  extends: .dotnet-deploy-nuget
+  variables:
+    PROJECT: 'src/ViciOne.Journal/Journal.csproj'
+    REPO: 'JFrogViciOne'
+
+Release Journal NuGet:
+  extends: .dotnet-release-nuget
+  variables:
+    PROJECT: 'src/ViciOne.Journal/Journal.csproj'
+    REPO: 'JFrogViciOne'
+
+Deploy Journal Logging NuGet:
+  extends: .dotnet-deploy-nuget
+  variables:
+    PROJECT: 'src/ViciOne.Journal.Logging/Logging.csproj'
+    REPO: 'JFrogViciOne'
+
+Release Journal Logging NuGet:
+  extends: .dotnet-release-nuget
+  variables:
+    PROJECT: 'src/ViciOne.Journal.Logging/Logging.csproj'
+    REPO: 'JFrogViciOne'
+
+Deploy Serilog Sinks Journal NuGet:
+  extends: .dotnet-deploy-nuget
+  variables:
+    PROJECT: 'src/Serilog.Sinks.Journal/Serilog.csproj'
+    REPO: 'JFrogViciOne'
+
+Release Serilog Sinks Journal NuGet:
+  extends: .dotnet-release-nuget
+  variables:
+    PROJECT: 'src/Serilog.Sinks.Journal/Serilog.csproj'
+    REPO: 'JFrogViciOne'

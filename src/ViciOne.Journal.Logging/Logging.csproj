@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ViciOne.Journal.Logging</AssemblyName>
+    <RootNamespace>ViciOne.Journal</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ViciOne.Journal\JournalOpeningMode.cs" Link="JournalOpeningMode.cs" />
+    <Compile Include="..\ViciOne.Journal\SafeJournalHandle.cs" Link="SafeJournalHandle.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" />
+  </ItemGroup>
+
+</Project>

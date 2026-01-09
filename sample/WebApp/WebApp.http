@@ -1,0 +1,38 @@
+@App_HostAddress = http://localhost:5034
+
+GET {{App_HostAddress}}/api/v2/journal/fields
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/field-descriptions
+Accept: application/json
+###
+
+
+GET {{App_HostAddress}}/api/v2/journal/field-values/_UID
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/logs?since=2025-03-05T00:00:00Z
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/logs?since=2025-03-05T00:00:00Z&limit=1
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/logs?since=2025-03-05T00:00:00Z&limit=2&order=asc
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/priority-counts?since=2025-03-05T00:00:00Z
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/priority-counts?since=2025-03-05T00:00:00Z
+Accept: application/json
+###
+
+GET {{App_HostAddress}}/api/v2/journal/logs?since=2025-03-05T00:00:00Z&filter=PRIORITY=6,SYSLOG_IDENTIFIER=mosquitto,SYSLOG_IDENTIFIER=CRON
+Accept: application/json
+###

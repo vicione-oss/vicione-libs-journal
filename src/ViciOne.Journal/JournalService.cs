@@ -1,13 +1,10 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using System.Text;
-using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ViciOne.Journal;
 
-public sealed class JournalService(ILoggerFactory loggerFactory, IHostApplicationLifetime applicationLifetime, IOptions<JournalOptions> options) : IDisposable
+public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options) : IDisposable
 {
     private readonly ILogger<SystemdJournal>? _systemdLogger = options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null;
     private readonly AccessControl _accessControl = new(5);
@@ -85,68 +82,6 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IHostApplicatio
                 throw new InvalidOperationException("Error reading journal entries.", ex);
             }
         }, cancellationToken);
-
-    // TODO: maybe later
-    /// <param name="order">desc or asc</param>
-    internal async Task GetLogs(Stream stream, DateTimeOffset since, TimeSpan interval, string? filter = null, CancellationToken cancellationToken = default)
-    {
-        if (since > DateTimeOffset.Now)
-            throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
-
-        using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
-
-        try
-        {
-            // TODO: Use datetime offset in seek realtime
-            journal.SeekRealtime(since.DateTime);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Error setting journal pointer to {since}.", ex);
-        }
-
-        try
-        {
-            if (!string.IsNullOrEmpty(filter))
-                Filter.Apply(filter, journal);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
-        }
-
-        // combine cancellation token
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, applicationLifetime.ApplicationStopping);
-        JsonSerializerOptions jsonSerializerOptions = new() { WriteIndented = false, };
-
-        try
-        {
-            while (!cts.Token.IsCancellationRequested)
-            {
-                if (!journal.Next())
-                {
-                    await Task.Delay(interval, cts.Token);
-                    continue;
-                }
-
-                var entry = journal.GetCurrentEntry();
-
-                if (entry is null)
-                    continue;
-
-                // TODO: may serialize to stream directly
-                var json = JsonSerializer.Serialize(entry, jsonSerializerOptions);
-                var data = Encoding.UTF8.GetBytes($"{json}\n\n");
-                await stream.WriteAsync(data, cts.Token);
-                await stream.FlushAsync(cts.Token);
-            }
-
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Error reading journal entries.", ex);
-        }
-    }
 
     // TODO: proof if needed
     internal IReadOnlyCollection<IReadOnlyDictionary<string, string>> GetLogs(DateTimeOffset since, int pageSize, int pageNumber, string? filter = null)

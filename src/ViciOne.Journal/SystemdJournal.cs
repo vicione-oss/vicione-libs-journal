@@ -282,12 +282,15 @@ internal sealed partial class SystemdJournal : IDisposable
 
     public void AddDisjunction()
     {
-        var ret = SafeNativeCall(NativeMethods.sd_journal_add_disjunction);
-        if (ret < 0)
+        lock (_syncLock)
         {
-            _nativeErrorCount++;
-            _logger?.LogAddDisjunctionFailed(ret);
-            throw new JournalException($"sd_journal_add_disjunction failed with error {ret}", ret);
+            var ret = SafeNativeCall(NativeMethods.sd_journal_add_disjunction);
+            if (ret < 0)
+            {
+                _nativeErrorCount++;
+                _logger?.LogAddDisjunctionFailed(ret);
+                throw new JournalException($"sd_journal_add_disjunction failed with error {ret}", ret);
+            }
         }
     }
 

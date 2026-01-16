@@ -172,6 +172,39 @@ public sealed class JournalSpamAggregatorTests
         forwarded[1].Should().ContainKey("MESSAGE").WhoseValue.Should().BeOfType<string>().Which.Should().Contain("repeated 2 times");
     }
 
+    [Fact]
+    public async Task Uses_fixed_window()
+    {
+        // Fixed window: expires based on first entry timestamp.
+        // NOT a moving window that resets with each duplicate.
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 100,
+            Window = TimeSpan.FromMilliseconds(100),
+            FlushInterval = TimeSpan.FromMilliseconds(25),
+            TimeProvider = time,
+        };
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Continuous spam"));  // t=0
+        time.Advance(TimeSpan.FromMilliseconds(30));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Continuous spam"));  // t=30
+        time.Advance(TimeSpan.FromMilliseconds(30));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Continuous spam"));  // t=60
+        time.Advance(TimeSpan.FromMilliseconds(30));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Continuous spam"));  // t=90
+
+        // Window expires at t=100 (from first entry), not t=190 (from last).
+        await AdvanceAsync(time, TimeSpan.FromMilliseconds(50));  // t=140
+
+        forwarded.Should().HaveCount(2);
+        forwarded[^1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(3);
+    }
+
     private static Dictionary<string, object?> CreateEntry(string category, string message)
     {
         var items = new[]

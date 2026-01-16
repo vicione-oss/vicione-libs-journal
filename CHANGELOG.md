@@ -5,6 +5,7 @@
 ### Added
 
 - Support structured data
+- Implement spam-guard
 
 ### Fixed
 

@@ -3,7 +3,7 @@ using ViciOne.Journal;
 
 namespace Journal.Tests;
 
-public class SystemddJournal_FieldRegex
+public class SystemdJournal_FieldRegex
 {
     [Theory]
     [InlineData("FIELD")]

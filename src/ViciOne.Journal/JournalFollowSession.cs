@@ -4,46 +4,74 @@ namespace ViciOne.Journal;
 
 public sealed class JournalFollowSession : IDisposable
 {
-    private readonly SystemdJournal _journal;
+    private readonly JournalThread _journalThread;
     private readonly Action _onDispose;
+    private readonly ILogger<SystemdJournal>? _logger;
     private PeriodicTimer? _timer;
     private readonly TimeSpan _interval;
     private Task? _worker;
+    private CancellationTokenSource? _workerCts;
 
+    /// <summary>
+    /// Raised when a new journal entry is received.
+    /// </summary>
     public event Action<IReadOnlyDictionary<string, string>>? NewEntry;
+
+    /// <summary>
+    /// Raised when an error occurs during journal processing.
+    /// The session will stop after raising this event.
+    /// </summary>
+    public event Action<Exception>? Error;
 
     internal JournalFollowSession(JournalOptions options, TimeSpan interval, Action onDispose, ILogger<SystemdJournal>? logger = null)
     {
         if (interval.TotalMilliseconds < 250)
             throw new InvalidOperationException("The interval must be greater then 250ms.");
 
-        _journal = new(logger, options.OpeningMode);
+        _journalThread = new JournalThread(options, logger);
         _onDispose = onDispose;
+        _logger = logger;
         _interval = interval;
 
         try
         {
-            _journal.SeekTail();
+            _journalThread.Execute(j => j.SeekTail());
         }
         catch (Exception ex)
         {
+            _journalThread.Dispose();
             throw new InvalidOperationException("Error seeking journal tail.", ex);
         }
     }
 
-    private async Task ProcessInterval(PeriodicTimer timer)
+    private async Task ProcessInterval(PeriodicTimer timer, CancellationToken cancellationToken)
     {
-        while (await timer.WaitForNextTickAsync().ConfigureAwait(false))
+        try
         {
-            try
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                while (_journal.Next())
-                    NewEntry?.Invoke(_journal.GetCurrentEntry());
+                // Collect all new entries on the dedicated thread
+                var entries = _journalThread.Execute(j =>
+                {
+                    var list = new List<IReadOnlyDictionary<string, string>>();
+                    while (j.Next())
+                        list.Add(j.GetCurrentEntry());
+                    return list;
+                }, cancellationToken);
+
+                // Invoke events on the current (ThreadPool) thread
+                foreach (var entry in entries)
+                    NewEntry?.Invoke(entry);
             }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException("Error processing journal.", ex);
-            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal cancellation, don't treat as error
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error processing journal entries");
+            Error?.Invoke(ex);
         }
     }
 
@@ -52,10 +80,11 @@ public sealed class JournalFollowSession : IDisposable
         if (_timer is null)
         {
             _timer = new(_interval);
+            _workerCts = new CancellationTokenSource();
 
             GoBack(logCount);
 
-            _worker = ProcessInterval(_timer);
+            _worker = ProcessInterval(_timer, _workerCts.Token);
         }
     }
 
@@ -63,6 +92,8 @@ public sealed class JournalFollowSession : IDisposable
     {
         if (_timer is not null)
         {
+            // Signal cancellation first
+            _workerCts?.Cancel();
             _timer.Dispose();
 
             if (_worker is not null)
@@ -71,11 +102,16 @@ public sealed class JournalFollowSession : IDisposable
                 {
                     await _worker.ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                    // Expected during cancellation
+                }
 
                 _worker = null;
             }
 
+            _workerCts?.Dispose();
+            _workerCts = null;
             _timer = null;
         }
     }
@@ -87,8 +123,11 @@ public sealed class JournalFollowSession : IDisposable
 
         try
         {
-            Filter.Apply(filter, _journal);
-            _journal.SeekTail();
+            _journalThread.Execute(j =>
+            {
+                Filter.Apply(filter, j);
+                j.SeekTail();
+            });
         }
         catch (Exception ex)
         {
@@ -98,15 +137,21 @@ public sealed class JournalFollowSession : IDisposable
 
     private void GoBack(int times)
     {
-        for (var i = 0; i < times; i++)
-            _journal.Previous();
+        _journalThread.Execute(j =>
+        {
+            for (var i = 0; i < times; i++)
+                j.Previous();
+        });
     }
 
     public void Dispose()
     {
+        _workerCts?.Cancel();
         _timer?.Dispose();
         _timer = null;
-        _journal.Dispose();
+        _workerCts?.Dispose();
+        _workerCts = null;
+        _journalThread.Dispose();
         _onDispose();
     }
 }

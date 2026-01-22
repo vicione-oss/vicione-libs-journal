@@ -1,6 +1,4 @@
-using System;
-
-namespace ViciOne.Journal;
+﻿namespace ViciOne.Journal;
 
 internal readonly struct SpamSummary
 {

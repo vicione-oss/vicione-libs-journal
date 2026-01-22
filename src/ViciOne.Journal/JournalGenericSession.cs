@@ -4,23 +4,24 @@ namespace ViciOne.Journal;
 
 public sealed class JournalGenericSession : IJournalGenericSession
 {
-    private readonly SystemdJournal _journal;
+    private readonly JournalThread _journalThread;
     private readonly Action _onDispose;
 
     private bool _positionSet;
 
     internal JournalGenericSession(JournalOptions options, Action onDispose, ILogger<SystemdJournal>? logger = null)
     {
-        _journal = new(logger, options.OpeningMode);
+        _journalThread = new JournalThread(options, logger);
         _onDispose = onDispose;
 
         try
         {
-            _journal.SeekTail();
+            _journalThread.Execute(j => j.SeekTail());
             _positionSet = true;
         }
         catch (Exception ex)
         {
+            _journalThread.Dispose();
             throw new InvalidOperationException("Error seeking journal tail.", ex);
         }
     }
@@ -29,7 +30,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            Filter.Apply(filter, _journal);
+            _journalThread.Execute(j => Filter.Apply(filter, j));
             _positionSet = false;
         }
         catch (Exception ex)
@@ -42,7 +43,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            _journal.SeekTail();
+            _journalThread.Execute(j => j.SeekTail());
             _positionSet = true;
         }
         catch (Exception ex)
@@ -55,7 +56,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            _journal.SeekHead();
+            _journalThread.Execute(j => j.SeekHead());
             _positionSet = true;
         }
         catch (Exception ex)
@@ -68,7 +69,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            _journal.SeekRealtime(timestamp);
+            _journalThread.Execute(j => j.SeekRealtime(timestamp));
             _positionSet = true;
         }
         catch (Exception ex)
@@ -81,7 +82,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            _journal.SeekCursor(cursor);
+            _journalThread.Execute(j => j.SeekCursor(cursor));
             _positionSet = true;
         }
         catch (Exception ex)
@@ -94,7 +95,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            return _journal.GetCursor();
+            return _journalThread.Execute(j => j.GetCursor());
         }
         catch (Exception ex)
         {
@@ -110,25 +111,34 @@ public sealed class JournalGenericSession : IJournalGenericSession
         if (!_positionSet)
             throw new InvalidOperationException("Position not set. Seek a position before reading.");
 
-        var count = 0;
-        Func<bool> next = forward ? () => _journal.Next() : () => _journal.Previous();
-
-        if (skipFirst)
-            next();
-
-        while (count < size && next())
+        // Execute the entire enumeration on the dedicated thread and return results
+        var results = _journalThread.Execute(j =>
         {
-            var entry = _journal.GetCurrentEntry();
-            if (entry is null)
-                break;
-            yield return entry;
-            count++;
-        }
+            var list = new List<IReadOnlyDictionary<string, string>>(size);
+            var count = 0;
+            Func<bool> next = forward ? () => j.Next() : () => j.Previous();
+
+            if (skipFirst)
+                next();
+
+            while (count < size && next())
+            {
+                var entry = j.GetCurrentEntry();
+                if (entry is null)
+                    break;
+                list.Add(entry);
+                count++;
+            }
+
+            return list;
+        });
+
+        return results;
     }
 
     public void Dispose()
     {
-        _journal.Dispose();
+        _journalThread.Dispose();
         _onDispose();
     }
 }

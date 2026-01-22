@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Collections.Concurrent;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
@@ -57,15 +58,19 @@ internal partial class JournalEntryFactory
         "_TRANSPORT",        // Transport mechanism
         "_SOURCE_REALTIME_TIMESTAMP", // Source timestamp
     };
-    private static readonly Dictionary<string, string> s_fieldNameCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> s_fieldNameCache = new(StringComparer.Ordinal);
 
     public static Dictionary<string, object?> CreateLogEntry(IEnumerable<KeyValuePair<string, object?>> keyValueList,
         string message, LogLevel logLevel, bool writeCustomKeyValues, bool writeStructuredData, string prefix = "")
     {
-        var customFields = keyValueList
-            .Select(kv => (Key: CreateFieldName(kv.Key), kv.Value))
-            .Where(kv => !string.IsNullOrEmpty(kv.Key))
-            .ToDictionary();
+        Dictionary<string, object?> customFields = new(StringComparer.Ordinal);
+        foreach (var (key, value) in keyValueList)
+        {
+            var fieldName = CreateFieldName(key);
+            if (string.IsNullOrEmpty(fieldName))
+                continue;
+            customFields[fieldName] = value;
+        }
         var structuredData = string.Empty;
 
         if (writeStructuredData)
@@ -151,22 +156,22 @@ internal partial class JournalEntryFactory
 
     internal static string CreateFieldName(string keyName)
     {
-        if (s_fieldNameCache.TryGetValue(keyName, out var cachedName))
-            return cachedName;
+        if (string.IsNullOrWhiteSpace(keyName))
+            return string.Empty;
 
-        var nameWithUnderscores = InterpretCamelCase(keyName);
-        StringBuilder nameBuilder = new(FieldNameRegex().Replace(nameWithUnderscores.ToUpperInvariant(), string.Empty));
+        return s_fieldNameCache.GetOrAdd(keyName, static name =>
+        {
+            var nameWithUnderscores = InterpretCamelCase(name);
+            StringBuilder nameBuilder = new(FieldNameRegex().Replace(nameWithUnderscores.ToUpperInvariant(), string.Empty));
 
-        while (nameBuilder.Length > 0 && nameBuilder[0] == '_')
-            nameBuilder.Remove(0, 1);
+            while (nameBuilder.Length > 0 && nameBuilder[0] == '_')
+                nameBuilder.Remove(0, 1);
 
-        if (nameBuilder.Length > MaxJournalFieldLength)
-            nameBuilder.Length = MaxJournalFieldLength;
+            if (nameBuilder.Length > MaxJournalFieldLength)
+                nameBuilder.Length = MaxJournalFieldLength;
 
-        var fieldName = nameBuilder.ToString();
-        s_fieldNameCache[keyName] = fieldName;
-
-        return fieldName;
+            return nameBuilder.ToString();
+        });
     }
 
     private static string InterpretCamelCase(string value)

@@ -11,6 +11,9 @@ namespace ViciOne.Journal;
 [ApiController]
 internal class JournalController(ILogger<JournalController> logger, ILogger<SystemdJournal> loggerJournal, IHostApplicationLifetime appLifetime, IJournalFilterService filterService) : ControllerBase
 {
+    private const string OrderAscending = "ASC";
+    private const string OrderDescending = "DESC";
+
     private readonly ILogger<JournalController> _logger = logger;
     private readonly ILogger<SystemdJournal> _loggerJournal = loggerJournal;
     private readonly IHostApplicationLifetime _appLifetime = appLifetime;
@@ -100,8 +103,8 @@ internal class JournalController(ILogger<JournalController> logger, ILogger<Syst
 
             var order = Request.Query.ContainsKey("order")
                            ? Request.Query["order"].ToString().ToUpperInvariant()
-                           : "DESC";
-            if (order is not "ASC" and not "DESC")
+                           : OrderDescending;
+            if (order is not OrderAscending and not OrderDescending)
             {
                 return BadRequest("Parameter 'order' must be either 'asc' or 'desc'.");
             }
@@ -209,7 +212,7 @@ internal class JournalController(ILogger<JournalController> logger, ILogger<Syst
                     logs.Add(journal.GetCurrentEntry());
                     count++;
                 }
-                if (order == "desc")
+                if (order == OrderDescending)
                 {
                     logs.Reverse();
                 }

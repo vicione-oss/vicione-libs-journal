@@ -1,6 +1,5 @@
 ﻿using System.Globalization;
 using System.Text;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -16,7 +15,7 @@ const string PriorityFieldName = "PRIORITY";
 using NullLoggerFactory loggerFactory = new();
 var options = Substitute.For<IOptions<JournalOptions>>();
 options.Value.Returns(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly });
-using JournalService service = new(loggerFactory, Substitute.For<IHostApplicationLifetime>(), options);
+using JournalService service = new(loggerFactory, options);
 using var session = await service.CreateFollower(TimeSpan.FromSeconds(1));
 session.NewEntry += OnNewEntry;
 

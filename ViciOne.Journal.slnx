@@ -1,0 +1,28 @@
+<Solution>
+  <Folder Name="/sample/">
+    <Project Path="sample/Benchmarks/Benchmarks.csproj" />
+    <Project Path="sample/LogFollower/LogFollower.csproj" />
+    <Project Path="sample/LogViewer/LogViewer.csproj" />
+    <Project Path="sample/WebApp/WebApp.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="CHANGELOG.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="NuGet.Config" />
+    <File Path="README.md" />
+    <File Path="tests.runsettings" />
+    <File Path="VERSION" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Archive/Archive.csproj" />
+    <Project Path="src/Serilog.Sinks.Journal/Serilog.csproj" />
+    <Project Path="src/ViciOne.Journal.Logging/Logging.csproj" />
+    <Project Path="src/ViciOne.Journal/Journal.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Journal.Tests/Journal.Tests.csproj" />
+    <Project Path="tests/Logging.Tests/Logging.Tests.csproj" />
+    <Project Path="tests/Serilog.Tests/Serilog.Tests.csproj" />
+  </Folder>
+</Solution>

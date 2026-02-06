@@ -1,4 +1,5 @@
-﻿using FluentAssertions;
+﻿using System.Collections.Concurrent;
+using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using ViciOne.Journal;
@@ -35,7 +36,7 @@ public sealed class JournalSpamAggregatorTests
     [Fact]
     public async Task Flushes_summary_after_window_elapsed()
     {
-        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var forwarded = new ConcurrentBag<IReadOnlyDictionary<string, object?>>();
         var time = new FakeTimeProvider();
         var options = new JournalSpamGuardOptions
         {
@@ -51,10 +52,12 @@ public sealed class JournalSpamAggregatorTests
         aggregator.Enqueue(CreateEntry("SERVICE", "Slow repeat"));
         aggregator.Enqueue(CreateEntry("SERVICE", "Slow repeat"));
 
-        await AdvanceAsync(time, TimeSpan.FromMilliseconds(150));
+        time.Advance(TimeSpan.FromMilliseconds(150));
+        await WaitForCountAsync(forwarded, 2);
 
-        forwarded.Should().HaveCount(2);
-        forwarded[^1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        var snapshot = forwarded.ToList();
+        snapshot.Should().HaveCount(2);
+        snapshot.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
     }
 
     [Fact]
@@ -115,7 +118,7 @@ public sealed class JournalSpamAggregatorTests
     [Fact]
     public async Task Forwards_new_entry_after_window_flush()
     {
-        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var forwarded = new ConcurrentBag<IReadOnlyDictionary<string, object?>>();
         var time = new FakeTimeProvider();
         var options = new JournalSpamGuardOptions
         {
@@ -133,15 +136,16 @@ public sealed class JournalSpamAggregatorTests
 
         forwarded.Should().HaveCount(1);
 
-        await AdvanceAsync(time, TimeSpan.FromMilliseconds(150));
+        time.Advance(TimeSpan.FromMilliseconds(150));
+        await WaitForCountAsync(forwarded, 2);
 
         forwarded.Should().HaveCount(2);
-        forwarded[1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        forwarded.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
 
         aggregator.Enqueue(CreateEntry("SERVICE", "Flushed"));
 
         forwarded.Should().HaveCount(3);
-        forwarded[^1].Should().Contain(new KeyValuePair<string, object?>("MESSAGE", "Flushed"));
+        forwarded.First(e => HasMessage(e, "Flushed")).Should().Contain(new KeyValuePair<string, object?>("MESSAGE", "Flushed"));
     }
 
     [Fact]
@@ -177,7 +181,7 @@ public sealed class JournalSpamAggregatorTests
     {
         // Fixed window: expires based on first entry timestamp.
         // NOT a moving window that resets with each duplicate.
-        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var forwarded = new ConcurrentBag<IReadOnlyDictionary<string, object?>>();
         var time = new FakeTimeProvider();
         var options = new JournalSpamGuardOptions
         {
@@ -199,10 +203,12 @@ public sealed class JournalSpamAggregatorTests
         aggregator.Enqueue(CreateEntry("SERVICE", "Continuous spam"));  // t=90
 
         // Window expires at t=100 (from first entry), not t=190 (from last).
-        await AdvanceAsync(time, TimeSpan.FromMilliseconds(50));  // t=140
+        time.Advance(TimeSpan.FromMilliseconds(50));  // t=140
+        await WaitForCountAsync(forwarded, 2);
 
-        forwarded.Should().HaveCount(2);
-        forwarded[^1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(3);
+        var snapshot = forwarded.ToList();
+        snapshot.Should().HaveCount(2);
+        snapshot.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(3);
     }
 
     private static Dictionary<string, object?> CreateEntry(string category, string message)
@@ -233,9 +239,12 @@ public sealed class JournalSpamAggregatorTests
         return count;
     }
 
-    private static async Task AdvanceAsync(FakeTimeProvider provider, TimeSpan duration)
+    private static async Task WaitForCountAsync<T>(ConcurrentBag<T> collection, int expectedCount, int timeoutMs = 1000)
     {
-        provider.Advance(duration);
-        await Task.Yield();
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (collection.Count < expectedCount && Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(10);
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 namespace ViciOne.Journal;
 
-public sealed class JournalFollowSession : IDisposable
+public sealed class JournalFollowSession : IJournalFollowSession
 {
     private readonly JournalThread _journalThread;
     private readonly Action _onDispose;

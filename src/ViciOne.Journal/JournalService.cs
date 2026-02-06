@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace ViciOne.Journal;
 
-public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options) : IDisposable
+public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options) : IJournalService
 {
     private readonly ILogger<SystemdJournal>? _systemdLogger = options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null;
     private readonly AccessControl _accessControl = new(5);
@@ -193,17 +193,17 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
         }, cancellationToken);
 
     [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht")]
-    public async Task<JournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default)
+    public async Task<IJournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default)
     {
         var access = await _accessControl.Begin(cancellationToken);
-        return new(options.Value, access.Dispose, _systemdLogger);
+        return new JournalGenericSession(options.Value, access.Dispose, _systemdLogger);
     }
 
     [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht")]
-    public async Task<JournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default)
+    public async Task<IJournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default)
     {
         var access = await _accessControl.Begin(cancellation);
-        return new(options.Value, interval, access.Dispose, _systemdLogger);
+        return new JournalFollowSession(options.Value, interval, access.Dispose, _systemdLogger);
     }
 
     public void Dispose()

@@ -6,6 +6,8 @@
 
 - Support structured data
 - Implement spam-guard
+- Add an interface for journal service
+- Add an interface for journal session
 
 ### Fixed
 

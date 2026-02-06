@@ -1,5 +1,5 @@
 ﻿using System.Collections.Concurrent;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using ViciOne.Journal;

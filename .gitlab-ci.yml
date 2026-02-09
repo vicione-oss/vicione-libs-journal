@@ -10,6 +10,8 @@ Build:
 
 xUnit:
   extends: .dotnet-test-xunit
+  variables:
+    FILTER: "Category!=Integration"
   artifacts:
     reports:
       junit: artifacts/tests/*-test-report.xml

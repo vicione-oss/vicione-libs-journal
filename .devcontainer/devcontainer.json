@@ -1,0 +1,41 @@
+﻿{
+    "name": "ViciOne Journal",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": true,
+            "configureZshAsDefaultShell": true,
+            "installOhMyZsh": true,
+            "upgradePackages": true
+        },
+        "ghcr.io/devcontainers/features/git:1": {}
+    },
+    "privileged": true,
+    "runArgs": [
+        "--systemd=always",
+        "--cap-add=SYS_ADMIN"
+    ],
+    "overrideCommand": false,
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-dotnettools.csharp",
+                "ms-dotnettools.csdevkit",
+                "ms-dotnettools.vscode-dotnet-runtime",
+                "editorconfig.editorconfig"
+            ],
+            "settings": {
+                "dotnet.defaultSolution": "ViciOne.Journal.sln",
+                "omnisharp.enableRoslynAnalyzers": true,
+                "omnisharp.enableEditorConfigSupport": true
+            }
+        }
+    },
+    "postCreateCommand": "dotnet restore && dotnet build",
+    "remoteUser": "root",
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.nuget/packages,target=/root/.nuget/packages,type=bind,consistency=cached"
+    ]
+}

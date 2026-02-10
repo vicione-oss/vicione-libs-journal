@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+﻿using AwesomeAssertions;
 using ViciOne.Journal;
 
 namespace Journal.Tests;

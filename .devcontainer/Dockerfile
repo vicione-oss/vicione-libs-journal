@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0
+FROM mcr.microsoft.com/dotnet/sdk:10.0
 
 LABEL maintainer="ViciOne" \
       description="Development container for ViciOne.Journal with systemd support"

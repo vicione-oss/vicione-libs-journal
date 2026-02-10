@@ -21,7 +21,7 @@
     <Nullable>enable</Nullable>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
     <!-- Allgemeine Informationen -->
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifiers Condition="$(MSBuildProjectDirectory.Contains('src'))">linux-x64;linux-arm64;win-x64</RuntimeIdentifiers>
     <Description>-</Description>
     <Product>ViciOne</Product>
@@ -39,7 +39,6 @@
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
     <DisableImplicitLibraryPacksFolder>true</DisableImplicitLibraryPacksFolder>
-    <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 
   <!-- Für Repos die Projekte enthalten die als NuGet Paket veröffentlicht werden -->

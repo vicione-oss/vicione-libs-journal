@@ -9,6 +9,13 @@
 - Add an interface for journal service
 - Add an interface for journal session
 
+### Changed
+
+- Update `.NET` to `10.0`
+- Update `Microsoft.Extensions.Hosting.Abstractions` to `10.0.2`
+- Update `Microsoft.Extensions.Logging.Abstractions` to `10.0.2`
+- Update `Microsoft.Extensions.Logging.Configuration` to `10.0.2`
+
 ### Fixed
 
 - Handle empty Entries

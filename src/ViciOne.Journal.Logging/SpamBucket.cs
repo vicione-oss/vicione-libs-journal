@@ -1,4 +1,4 @@
-namespace ViciOne.Journal;
+﻿namespace ViciOne.Journal;
 
 internal sealed class SpamBucket
 {

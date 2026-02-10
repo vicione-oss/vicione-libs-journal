@@ -80,13 +80,13 @@ Log.Logger = new LoggerConfiguration()
 ## 📋 Requirements
 
 - **Operating System**: Linux with systemd
-- **.NET Version**: .NET 9.0 or later
+- **.NET Version**: .NET 10.0 or later
 - **Native Library**: libsystemd.so.0
 
 ### Development Setup
 
 1. Clone the repository
-2. Ensure you have .NET 9.0 SDK installed
+2. Ensure you have .NET SDK installed
 3. Open the solution in your IDE
 4. Run the tests: `dotnet test`
 

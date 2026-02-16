@@ -57,7 +57,7 @@ public sealed class JournalFollowSession_StartStop
         using var session = CreateSession();
 
         session.Start(0);
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         await session.Stop();
 
         // Should complete without exception
@@ -70,7 +70,7 @@ public sealed class JournalFollowSession_StartStop
         using var session = CreateSession();
 
         session.Start(5);
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         await session.Stop();
 
         // Should complete without exception
@@ -174,7 +174,7 @@ public sealed class JournalFollowSession_Events
 
         session.NewEntry += entry => entries.Add(entry);
         session.Start(5); // Start with 5 entries look-behind
-        await Task.Delay(500); // Wait for at least one timer tick
+        await Task.Delay(500, TestContext.Current.CancellationToken); // Wait for at least one timer tick
         await session.Stop();
 
         // Should have received some entries from look-behind
@@ -190,7 +190,7 @@ public sealed class JournalFollowSession_Events
 
         session.Error += ex => receivedError = ex;
         session.Start(0);
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         await session.Stop();
 
         // No error expected in normal operation
@@ -205,7 +205,7 @@ public sealed class JournalFollowSession_Events
 
         session.NewEntry += entry => entries.Add(entry);
         session.Start(10);
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
         await session.Stop();
 
         if (entries.Count >= 2)
@@ -298,7 +298,7 @@ public sealed class JournalFollowSession_FilteredEvents
         session.SetFilter("PRIORITY=6");
         session.NewEntry += entry => entries.Add(entry);
         session.Start(10);
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
         await session.Stop();
 
         entries.Should().AllSatisfy(entry =>
@@ -321,7 +321,7 @@ public sealed class JournalFollowSession_FilteredEvents
         session.SetFilter("PRIORITY=6+PRIORITY=5");
         session.NewEntry += entry => entries.Add(entry);
         session.Start(10);
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
         await session.Stop();
 
         entries.Should().AllSatisfy(entry =>

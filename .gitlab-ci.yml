@@ -90,7 +90,7 @@ include:
         - echo "$Version"
       tags:
         - ${RUNNER_TAG}
-  - component: $CI_SERVER_FQDN/vicione-oss/tooling/dotnet-component/dotnet-test@1.0.1
+  - component: $CI_SERVER_FQDN/vicione-oss/tooling/dotnet-component/dotnet-test@2.1.1
     inputs:
       image: ${IMAGE_NAME}
       rules: *rules

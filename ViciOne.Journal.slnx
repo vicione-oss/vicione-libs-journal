@@ -15,7 +15,6 @@
     <File Path="VERSION" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/Archive/Archive.csproj" />
     <Project Path="src/Serilog.Sinks.Journal/Serilog.csproj" />
     <Project Path="src/ViciOne.Journal.Logging/Logging.csproj" />
     <Project Path="src/ViciOne.Journal/Journal.csproj" />

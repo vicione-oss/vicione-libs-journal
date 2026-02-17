@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 - Unreleased
+## 1.0.0 - 2026-02-17
 
 ### Added
 
@@ -12,9 +12,10 @@
 ### Changed
 
 - Update `.NET` to `10.0`
-- Update `Microsoft.Extensions.Hosting.Abstractions` to `10.0.2`
-- Update `Microsoft.Extensions.Logging.Abstractions` to `10.0.2`
-- Update `Microsoft.Extensions.Logging.Configuration` to `10.0.2`
+- Update `Microsoft.Extensions.Hosting.Abstractions` to `10.0.3`
+- Update `Microsoft.Extensions.Logging.Abstractions` to `10.0.3`
+- Update `Microsoft.Extensions.Logging.Configuration` to `10.0.3`
+- Update `Serilog` to `4.3.1`
 
 ### Fixed
 

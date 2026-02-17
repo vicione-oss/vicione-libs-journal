@@ -45,7 +45,7 @@
   </PropertyGroup>
 
   <!-- Beispielprojekte sollen beim Veröffentlichen ignoriert und nicht als NuGet-Paket verpackt werden -->
-  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('samples'))">
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('sample'))">
     <IsPackable>false</IsPackable>
     <IsPublishable>false</IsPublishable>
   </PropertyGroup>

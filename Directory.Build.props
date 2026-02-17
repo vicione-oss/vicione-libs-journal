@@ -40,8 +40,7 @@
   <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('tests'))">
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
-    <IsPublishable>false</IsPublishable>
-    <RunSettingsFilePath>$(MsBuildThisFileDirectory)\tests.runsettings</RunSettingsFilePath>
+    <IsPublishable>true</IsPublishable>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner> <!-- Microsoft Testing Platform command line experience -->
   </PropertyGroup>
 

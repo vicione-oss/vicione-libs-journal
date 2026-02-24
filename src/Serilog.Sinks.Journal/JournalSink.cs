@@ -6,15 +6,30 @@ using ViciOne.Journal;
 
 namespace Serilog.Sinks.Journal;
 
-public sealed class JournalSink(IReadOnlyDictionary<string, object?>? metaDataFields, ITextFormatter formatter,
-    bool writeCustomKeyValues, bool writeStructuredData) : ILogEventSink, IDisposable
+public sealed class JournalSink : ILogEventSink, IDisposable
 {
     private readonly SystemdJournalWriter _journalWriter = new();
-    private readonly ITextFormatter _formatter = formatter;
-    private readonly IReadOnlyDictionary<string, object?> _metaDataFields = metaDataFields ?? new Dictionary<string, object?>();
+    private readonly ITextFormatter _formatter;
+    private readonly IReadOnlyDictionary<string, object?> _metaDataFields;
+    private readonly JournalSpamAggregator? _spamAggregator;
+    private readonly bool _writeCustomKeyValues;
+    private readonly bool _writeStructuredData;
 
-    public JournalSink(IReadOnlyDictionary<string, object?>? metaDataFields, ITextFormatter formatter) : this(metaDataFields, formatter, false, true)
+    public JournalSink(IReadOnlyDictionary<string, object?>? metaDataFields, ITextFormatter formatter)
+        : this(metaDataFields, formatter, false, true)
     {
+    }
+
+    public JournalSink(IReadOnlyDictionary<string, object?>? metaDataFields, ITextFormatter formatter,
+        bool writeCustomKeyValues, bool writeStructuredData, JournalSpamGuardOptions? spamGuardOptions = null)
+    {
+        _formatter = formatter;
+        _metaDataFields = metaDataFields ?? new Dictionary<string, object?>();
+        _writeCustomKeyValues = writeCustomKeyValues;
+        _writeStructuredData = writeStructuredData;
+        _spamAggregator = spamGuardOptions is { Enabled: true }
+            ? new JournalSpamAggregator(spamGuardOptions, entry => _journalWriter.WriteEntry(entry))
+            : null;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1848:LoggerMessage-Delegaten verwenden")]
@@ -27,10 +42,13 @@ public sealed class JournalSink(IReadOnlyDictionary<string, object?>? metaDataFi
 
         var text = writer.ToString();
         var fields = _metaDataFields.Concat(GetFieldsFromLogEvent(logEvent));
-        var entry = JournalEntryFactory.CreateLogEntry(fields, text, ToLogLevel(logEvent.Level), writeCustomKeyValues,
-            writeStructuredData);
+        var entry = JournalEntryFactory.CreateLogEntry(fields, text, ToLogLevel(logEvent.Level), _writeCustomKeyValues,
+            _writeStructuredData);
 
-        _journalWriter.WriteEntry(entry);
+        if (_spamAggregator is { } aggregator)
+            aggregator.Enqueue(entry);
+        else
+            _journalWriter.WriteEntry(entry);
     }
 
     private static IEnumerable<KeyValuePair<string, object?>> GetFieldsFromLogEvent(LogEvent logEvent)
@@ -75,5 +93,8 @@ public sealed class JournalSink(IReadOnlyDictionary<string, object?>? metaDataFi
         };
 
     public void Dispose()
-        => _journalWriter.Dispose();
+    {
+        _spamAggregator?.Dispose();
+        _journalWriter.Dispose();
+    }
 }

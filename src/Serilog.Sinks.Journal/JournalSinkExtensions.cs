@@ -1,5 +1,6 @@
 ﻿using Serilog.Configuration;
 using Serilog.Formatting.Display;
+using ViciOne.Journal;
 
 namespace Serilog.Sinks.Journal;
 
@@ -12,10 +13,19 @@ public static class JournalSinkExtensions
         string outputTemplate = "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
         IReadOnlyDictionary<string, object?>? metaDataFields = null,
         bool writeCustomKeyValues = false,
-        bool writeStructuredData = true)
+        bool writeStructuredData = true,
+        Action<JournalSpamGuardOptions>? configureSpamGuard = null)
     {
         var formatter = new MessageTemplateTextFormatter(outputTemplate, formatProvider);
 
-        return configuration.Sink(new JournalSink(metaDataFields, formatter, writeCustomKeyValues, writeStructuredData));
+        JournalSpamGuardOptions? spamGuardOptions = null;
+
+        if (configureSpamGuard is not null)
+        {
+            spamGuardOptions = new JournalSpamGuardOptions { Enabled = true };
+            configureSpamGuard(spamGuardOptions);
+        }
+
+        return configuration.Sink(new JournalSink(metaDataFields, formatter, writeCustomKeyValues, writeStructuredData, spamGuardOptions));
     }
 }

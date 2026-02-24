@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 - unreleased
+
+### Added
+
+- Add spam-guard support to Serilog sink
+
 ## 1.0.0 - 2026-02-17
 
 ### Added

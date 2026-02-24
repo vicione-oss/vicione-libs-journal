@@ -10,7 +10,13 @@
   <ItemGroup>
     <Compile Include="..\ViciOne.Journal.Logging\IOVector.cs" Link="IOVector.cs" />
     <Compile Include="..\ViciOne.Journal.Logging\JournalEntryFactory.cs" Link="JournalEntryFactory.cs" />
+    <Compile Include="..\ViciOne.Journal.Logging\JournalSpamAggregator.cs" Link="JournalSpamAggregator.cs" />
+    <Compile Include="..\ViciOne.Journal.Logging\JournalSpamGuardOptions.cs" Link="JournalSpamGuardOptions.cs" />
     <Compile Include="..\ViciOne.Journal.Logging\NativeMethods.cs" Link="NativeMethods.cs" />
+    <Compile Include="..\ViciOne.Journal.Logging\SpamBucket.cs" Link="SpamBucket.cs" />
+    <Compile Include="..\ViciOne.Journal.Logging\SpamKey.cs" Link="SpamKey.cs" />
+    <Compile Include="..\ViciOne.Journal.Logging\SpamKeyComparer.cs" Link="SpamKeyComparer.cs" />
+    <Compile Include="..\ViciOne.Journal.Logging\SpamSummary.cs" Link="SpamSummary.cs" />
     <Compile Include="..\ViciOne.Journal.Logging\SystemdJournalWriter.cs" Link="SystemdJournalWriter.cs" />
     <Compile Include="..\ViciOne.Journal\JournalOpeningMode.cs" Link="JournalOpeningMode.cs" />
     <Compile Include="..\ViciOne.Journal\SafeJournalHandle.cs" Link="SafeJournalHandle.cs" />

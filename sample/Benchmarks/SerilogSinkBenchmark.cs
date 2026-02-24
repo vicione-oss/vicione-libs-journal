@@ -1,5 +1,4 @@
-﻿
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using BenchmarkDotNet.Attributes;
 using Serilog;
@@ -14,7 +13,12 @@ public class SerilogSinkBenchmark
     [IterationSetup]
     public static void Setup()
         => Log.Logger = new LoggerConfiguration()
-            .WriteTo.Journal(CultureInfo.InvariantCulture)
+            .WriteTo.Journal(CultureInfo.InvariantCulture, configureSpamGuard: options =>
+            {
+                options.Enabled = true;
+                options.Window = TimeSpan.FromSeconds(1);
+                options.SummaryCountThreshold = 10000;
+            })
             .CreateLogger();
 
     [Params(1_000_000)]
@@ -25,7 +29,7 @@ public class SerilogSinkBenchmark
     public void Log_Message_to_Journal()
     {
         for (var i = 0; i < Entries; i++)
-            Log.Debug("Bechnmark");
+            Log.Warning("Bechnmark");
 
         Log.CloseAndFlush();
     }

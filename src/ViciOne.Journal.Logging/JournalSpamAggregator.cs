@@ -170,7 +170,7 @@ internal sealed class JournalSpamAggregator : IDisposable
 
         foreach (var pair in _buckets)
         {
-            if (!pair.Value.ShouldFlush(nowTicks, _windowTicks))
+            if (!pair.Value.IsWindowExpired(nowTicks, _windowTicks))
                 continue;
 
             if (pair.Value.TryCreateSummary(nowTicks, out var summary))

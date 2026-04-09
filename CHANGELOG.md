@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 - Unreleased
+
+### Changed
+
+- Log entries that are only duplicated once are now forwarded as-is instead of being replaced with a `"(repeated 1 times in ...)"` summary
+
+### Fixed
+
+- Fixed a memory leak where one-shot log entries (never duplicated) permanently occupied spam guard bucket slots, eventually causing all new entries to bypass aggregation
+
 ## 1.1.0 - 2026-02-25
 
 ### Added

@@ -57,7 +57,8 @@ public sealed class JournalSpamAggregatorTests
 
         var snapshot = forwarded.ToList();
         snapshot.Should().HaveCount(2);
-        snapshot.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        snapshot.Should().AllSatisfy(e => e.Should().ContainKey("MESSAGE").WhoseValue.Should().Be("Slow repeat"));
+        snapshot.Should().AllSatisfy(e => e.Should().NotContainKey("SPAM_COUNT"));
     }
 
     [Fact]
@@ -84,7 +85,8 @@ public sealed class JournalSpamAggregatorTests
         aggregator.Dispose();
 
         forwarded.Should().HaveCount(2);
-        forwarded.Last().Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        forwarded.Last().Should().ContainKey("MESSAGE").WhoseValue.Should().Be("Dispose repeat");
+        forwarded.Last().Should().NotContainKey("SPAM_COUNT");
     }
 
     [Fact]
@@ -111,7 +113,7 @@ public sealed class JournalSpamAggregatorTests
 
         aggregator.Dispose();
 
-        CountWhere(forwarded, entry => entry.ContainsKey(options.SummaryCountFieldName)).Should().Be(1);
+        CountWhere(forwarded, entry => entry.ContainsKey(options.SummaryCountFieldName)).Should().Be(0);
         CountWhere(forwarded, entry => HasMessage(entry, "No capacity")).Should().Be(2);
     }
 
@@ -140,7 +142,7 @@ public sealed class JournalSpamAggregatorTests
         await WaitForCountAsync(forwarded, 2);
 
         forwarded.Should().HaveCount(2);
-        forwarded.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        forwarded.ToList().Should().AllSatisfy(e => e.Should().NotContainKey("SPAM_COUNT"));
 
         aggregator.Enqueue(CreateEntry("SERVICE", "Flushed"));
 
@@ -209,6 +211,122 @@ public sealed class JournalSpamAggregatorTests
         var snapshot = forwarded.ToList();
         snapshot.Should().HaveCount(2);
         snapshot.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Reclaims_expired_buckets_with_no_duplicates()
+    {
+        // A unique entry that never repeats should not permanently occupy a bucket slot.
+        var forwarded = new ConcurrentBag<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 100,
+            Window = TimeSpan.FromMilliseconds(50),
+            FlushInterval = TimeSpan.FromMilliseconds(10),
+            MaxBucketCapacity = 1,
+            TimeProvider = time,
+        };
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        // Fill the single bucket slot with a one-shot entry (no duplicate).
+        aggregator.Enqueue(CreateEntry("SERVICE", "One-shot"));
+        forwarded.Should().HaveCount(1);
+
+        // Let the window expire so the cleanup loop can reclaim the stale bucket.
+        time.Advance(TimeSpan.FromMilliseconds(150));
+        await Task.Delay(50);
+
+        // A new distinct entry should now be tracked (bucket slot freed).
+        aggregator.Enqueue(CreateEntry("SERVICE", "Second"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Second"));
+
+        // If the stale bucket was not reclaimed, "Second" would bypass aggregation
+        // and both copies would be forwarded immediately (count = 3 total).
+        // With the fix, the first "Second" creates a bucket and the duplicate is suppressed.
+        forwarded.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Enqueue_after_dispose_forwards_directly()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 100,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.Zero,
+            TimeProvider = time,
+        };
+
+        var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+        aggregator.Dispose();
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "After dispose"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "After dispose"));
+
+        forwarded.Should().HaveCount(2);
+        forwarded.Should().AllSatisfy(e => e.Should().NotContainKey("SPAM_COUNT"));
+    }
+
+    [Fact]
+    public void Distinct_messages_tracked_independently()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Alpha"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Beta"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Alpha"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Beta"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Alpha"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Beta"));
+
+        // First of each forwarded (2) + one summary per key when threshold hit (2) = 4.
+        forwarded.Should().HaveCount(4);
+        CountWhere(forwarded, e => e.ContainsKey("SPAM_COUNT")).Should().Be(2);
+    }
+
+    [Fact]
+    public void Entry_missing_aggregation_fields_forwards_directly()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        // All-whitespace fields are stripped by NormalizeFields, producing an empty
+        // fields array. SpamKey.Create then returns null → entries forwarded directly.
+        options.AggregationFields.Clear();
+        options.AggregationFields.Add("  ");
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "No fields"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "No fields"));
+
+        forwarded.Should().HaveCount(2);
+        forwarded.Should().AllSatisfy(e => e.Should().NotContainKey("SPAM_COUNT"));
     }
 
     private static Dictionary<string, object?> CreateEntry(string category, string message)

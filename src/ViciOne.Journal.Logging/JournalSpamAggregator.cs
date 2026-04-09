@@ -170,7 +170,7 @@ internal sealed class JournalSpamAggregator : IDisposable
 
         foreach (var pair in _buckets)
         {
-            if (!pair.Value.ShouldFlush(nowTicks, _windowTicks))
+            if (!pair.Value.IsWindowExpired(nowTicks, _windowTicks))
                 continue;
 
             if (pair.Value.TryCreateSummary(nowTicks, out var summary))
@@ -224,7 +224,12 @@ internal sealed class JournalSpamAggregator : IDisposable
             return;
 
         foreach (var summary in summaries)
-            _forward(BuildSummaryEntry(summary));
+        {
+            if (summary.SuppressedCount <= 1)
+                _forward(summary.Template);
+            else
+                _forward(BuildSummaryEntry(summary));
+        }
     }
 
     private Dictionary<string, object?> BuildSummaryEntry(SpamSummary summary)

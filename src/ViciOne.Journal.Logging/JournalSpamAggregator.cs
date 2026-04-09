@@ -224,7 +224,12 @@ internal sealed class JournalSpamAggregator : IDisposable
             return;
 
         foreach (var summary in summaries)
-            _forward(BuildSummaryEntry(summary));
+        {
+            if (summary.SuppressedCount <= 1)
+                _forward(summary.Template);
+            else
+                _forward(BuildSummaryEntry(summary));
+        }
     }
 
     private Dictionary<string, object?> BuildSummaryEntry(SpamSummary summary)

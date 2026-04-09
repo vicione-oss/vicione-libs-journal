@@ -35,9 +35,6 @@ internal sealed class SpamBucket
     internal bool IsWindowExpired(long nowTicks, long windowTicks)
         => windowTicks > 0 && nowTicks - _firstTick >= windowTicks;
 
-    internal bool ShouldFlush(long nowTicks, long windowTicks)
-        => HasSuppressedEntries && IsWindowExpired(nowTicks, windowTicks);
-
     internal bool TryCreateSummary(long nowTicks, out SpamSummary summary)
     {
         if (!HasSuppressedEntries)

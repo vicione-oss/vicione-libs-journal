@@ -57,7 +57,8 @@ public sealed class JournalSpamAggregatorTests
 
         var snapshot = forwarded.ToList();
         snapshot.Should().HaveCount(2);
-        snapshot.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        snapshot.Should().AllSatisfy(e => e.Should().ContainKey("MESSAGE").WhoseValue.Should().Be("Slow repeat"));
+        snapshot.Should().AllSatisfy(e => e.Should().NotContainKey("SPAM_COUNT"));
     }
 
     [Fact]
@@ -84,7 +85,8 @@ public sealed class JournalSpamAggregatorTests
         aggregator.Dispose();
 
         forwarded.Should().HaveCount(2);
-        forwarded.Last().Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        forwarded.Last().Should().ContainKey("MESSAGE").WhoseValue.Should().Be("Dispose repeat");
+        forwarded.Last().Should().NotContainKey("SPAM_COUNT");
     }
 
     [Fact]
@@ -111,7 +113,7 @@ public sealed class JournalSpamAggregatorTests
 
         aggregator.Dispose();
 
-        CountWhere(forwarded, entry => entry.ContainsKey(options.SummaryCountFieldName)).Should().Be(1);
+        CountWhere(forwarded, entry => entry.ContainsKey(options.SummaryCountFieldName)).Should().Be(0);
         CountWhere(forwarded, entry => HasMessage(entry, "No capacity")).Should().Be(2);
     }
 
@@ -140,7 +142,7 @@ public sealed class JournalSpamAggregatorTests
         await WaitForCountAsync(forwarded, 2);
 
         forwarded.Should().HaveCount(2);
-        forwarded.First(e => e.ContainsKey("SPAM_COUNT")).Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(1);
+        forwarded.ToList().Should().AllSatisfy(e => e.Should().NotContainKey("SPAM_COUNT"));
 
         aggregator.Enqueue(CreateEntry("SERVICE", "Flushed"));
 

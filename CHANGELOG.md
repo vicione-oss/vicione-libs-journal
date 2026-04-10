@@ -1,10 +1,11 @@
 # Changelog
 
-## 1.2.0 - Unreleased
+## 1.2.0 - 2026-04-10
 
 ### Changed
 
 - Log entries that are only duplicated once are now forwarded as-is instead of being replaced with a `"(repeated 1 times in ...)"` summary
+- Spam summary message appendix now displays window durations in seconds for second-scale windows (sub-second windows remain in milliseconds)
 
 ### Fixed
 

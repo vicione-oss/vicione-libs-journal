@@ -255,14 +255,23 @@ internal sealed class JournalSpamAggregator : IDisposable
 
         var messageText = originalMessage ?? string.Empty;
         var countText = suppressedCount.ToString(CultureInfo.InvariantCulture);
-        var windowText = duration <= TimeSpan.Zero
-            ? "0ms"
-            : string.Format(CultureInfo.InvariantCulture, "{0:F0}ms", duration.TotalMilliseconds);
+        var windowText = FormatWindow(duration);
 
         return template
             .Replace("{message}", messageText, StringComparison.Ordinal)
             .Replace("{count}", countText, StringComparison.Ordinal)
             .Replace("{window}", windowText, StringComparison.Ordinal);
+    }
+
+    private static string FormatWindow(TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+            return "0ms";
+
+        if (duration.TotalSeconds >= 1)
+            return string.Format(CultureInfo.InvariantCulture, "{0:F1}s", duration.TotalSeconds);
+
+        return string.Format(CultureInfo.InvariantCulture, "{0:F0}ms", duration.TotalMilliseconds);
     }
 
     private static string[] NormalizeFields(JournalSpamGuardOptions options)

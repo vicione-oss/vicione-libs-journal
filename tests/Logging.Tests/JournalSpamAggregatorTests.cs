@@ -179,6 +179,56 @@ public sealed class JournalSpamAggregatorTests
     }
 
     [Fact]
+    public void Summary_message_uses_seconds_for_second_scale_windows()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Connection lost"));
+        time.Advance(TimeSpan.FromSeconds(5));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Connection lost"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Connection lost"));
+
+        forwarded.Should().HaveCount(2);
+        forwarded[1].Should().ContainKey("MESSAGE").WhoseValue.Should().BeOfType<string>().Which.Should().Contain("in 5.0s");
+    }
+
+    [Fact]
+    public void Summary_message_keeps_milliseconds_for_sub_second_windows()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromMilliseconds(500),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Burst"));
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Burst"));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Burst"));
+
+        forwarded.Should().HaveCount(2);
+        forwarded[1].Should().ContainKey("MESSAGE").WhoseValue.Should().BeOfType<string>().Which.Should().Contain("in 200ms");
+    }
+
+    [Fact]
     public async Task Uses_fixed_window()
     {
         // Fixed window: expires based on first entry timestamp.

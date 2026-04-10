@@ -5,6 +5,7 @@
 ### Changed
 
 - Log entries that are only duplicated once are now forwarded as-is instead of being replaced with a `"(repeated 1 times in ...)"` summary
+- Spam summary message appendix now displays window durations in seconds for second-scale windows (sub-second windows remain in milliseconds)
 
 ### Fixed
 

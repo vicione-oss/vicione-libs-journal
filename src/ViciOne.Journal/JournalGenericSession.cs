@@ -131,7 +131,7 @@ public sealed class JournalGenericSession : IJournalGenericSession
         // Execute the entire enumeration on the dedicated thread and return results
         return _journalThread.Execute(j =>
         {
-            var list = new List<T>(size);
+            var list = new List<T>(Math.Min(size, 1024));
             Func<bool> next = forward ? j.Next : j.Previous;
 
             if (skipFirst)

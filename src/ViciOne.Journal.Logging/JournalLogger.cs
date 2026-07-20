@@ -25,8 +25,24 @@ internal partial class JournalLogger(string prefix, string category, IExternalSc
             if (!string.IsNullOrEmpty(category))
                 metaDataFields = metaDataFields.Append(new KeyValuePair<string, object?>("CATEGORY", category));
 
-            _log(JournalEntryFactory.CreateLogEntry(list, formatter(state, exception), logLevel, writeCustomKeyValues,
-                writeStructuredData, prefix, metaDataFields));
+            if (eventId.Id != 0 || !string.IsNullOrEmpty(eventId.Name))
+                metaDataFields = metaDataFields.Append(new KeyValuePair<string, object?>("EVENT_ID", FormatEventId(eventId)));
+
+            var entry = JournalEntryFactory.CreateLogEntry(list, formatter(state, exception), logLevel,
+                writeCustomKeyValues, writeStructuredData, prefix, metaDataFields);
+
+            if (!string.IsNullOrEmpty(category))
+                entry["CATEGORY"] = category;
+
+            if (eventId.Id != 0 || !string.IsNullOrEmpty(eventId.Name))
+                entry["EVENT_ID"] = FormatEventId(eventId);
+
+            _log(entry);
         }
     }
+
+    private static object FormatEventId(EventId eventId)
+        => string.IsNullOrEmpty(eventId.Name)
+            ? eventId.Id
+            : $"{eventId.Id}:{eventId.Name}";
 }

@@ -12,6 +12,7 @@ internal static class JournalFieldDescriptions
         { "_COMM", "The name of the executable process." },
         { "_EXE", "The absolute path to the executable process." },
         { "_SYSLOG_IDENTIFIER", "The name of the program that wrote the log." },
-        { "PRIORITY", "Log level (0=EMERG, 1=ALERT, 2=CRIT, 3=ERR, 4=WARNING, 5=NOTICE, 6=INFO, 7=DEBUG)" }
+        { "PRIORITY", "Log level (0=EMERG, 1=ALERT, 2=CRIT, 3=ERR, 4=WARNING, 5=NOTICE, 6=INFO, 7=DEBUG)" },
+        { "EVENT_ID", "The logging EventId of the call site (numeric id, or \"id:name\" when named)." }
     };
 }

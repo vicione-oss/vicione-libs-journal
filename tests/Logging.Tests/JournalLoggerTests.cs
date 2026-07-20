@@ -148,6 +148,52 @@ public class JournalLogger_
             });
     }
 
+    [Fact]
+    public void Surfaces_event_id_with_name()
+    {
+        IReadOnlyDictionary<string, object?> result = new Dictionary<string, object?>();
+        var logger = new JournalLogger("", "Test", null, entry => result = entry, new Dictionary<string, object?>(), true, true);
+
+        logger.LogWarning(new EventId(1001, "RequestFailed"), "Request {RequestId} failed", 1001);
+
+        result.Should().ContainKey("EVENT_ID").WhoseValue.Should().Be("1001:RequestFailed");
+    }
+
+    [Fact]
+    public void Surfaces_aggregation_fields_when_custom_key_values_are_disabled()
+    {
+        IReadOnlyDictionary<string, object?> result = new Dictionary<string, object?>();
+        var logger = new JournalLogger("", "Test", null, entry => result = entry, new Dictionary<string, object?>(), false, false);
+
+        logger.LogWarning(new EventId(1001, "RequestFailed"), "Request {RequestId} failed", 1001);
+
+        result.Should().ContainKey("CATEGORY").WhoseValue.Should().Be("Test");
+        result.Should().ContainKey("EVENT_ID").WhoseValue.Should().Be("1001:RequestFailed");
+        result.Should().NotContainKey("REQUESTID");
+    }
+
+    [Fact]
+    public void Surfaces_numeric_event_id_without_name()
+    {
+        IReadOnlyDictionary<string, object?> result = new Dictionary<string, object?>();
+        var logger = new JournalLogger("", "Test", null, entry => result = entry, new Dictionary<string, object?>(), true, true);
+
+        logger.LogWarning(new EventId(1001), "Request {RequestId} failed", 1001);
+
+        result.Should().ContainKey("EVENT_ID").WhoseValue.Should().Be(1001);
+    }
+
+    [Fact]
+    public void Omits_event_id_when_default()
+    {
+        IReadOnlyDictionary<string, object?> result = new Dictionary<string, object?>();
+        var logger = new JournalLogger("", "Test", null, entry => result = entry, new Dictionary<string, object?>(), true, true);
+
+        logger.LogWarning("Request {RequestId} failed", 1001);
+
+        result.Should().NotContainKey("EVENT_ID");
+    }
+
 #pragma warning disable xUnit1004
     [Fact(Skip = "Creates real journal entries")]
 #pragma warning restore xUnit1004

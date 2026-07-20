@@ -81,6 +81,86 @@ With `WriteCustomKeyValues`, a key-value whose field name is reserved by the sin
 
 ---
 
+### Aggregation strategies
+
+The spam guard groups repeated entries into a single summary. The only thing that
+differs between strategies is which fields form the aggregation key; bucketing,
+windowing, threshold counting, and summary emission are shared and unchanged.
+
+| Strategy                    | Key fields                              | Best for                                             |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------- |
+| Message-based (default)     | `MESSAGE`, `CATEGORY`, `PRIORITY`, `EXCEPTION` | Repeated identical messages                    |
+| EventId-based (opt-in)      | `EVENT_ID`, `CATEGORY`                   | Floods with unique text but a stable call site       |
+
+When `AggregationFields` is empty, message-based aggregation is used
+(`MESSAGE`, `CATEGORY`, `PRIORITY`, `EXCEPTION`). This is the default and remains
+unchanged.
+
+#### Message-based (default)
+
+Keys on the rendered message text. Ideal when the same message repeats verbatim:
+
+```csharp
+options.SpamGuard.Enabled = true;
+// No AggregationFields set → message-based aggregation.
+```
+
+This cannot collapse messages that embed a varying value, because every rendered
+message is unique:
+
+```csharp
+logger.LogWarning("Request {RequestId} failed", requestId);
+// "Request 1001 failed", "Request 1002 failed", ... → all unique → never aggregated
+```
+
+#### EventId-based (opt-in)
+
+Keys on the `EVENT_ID` and `CATEGORY` fields, which are stable per call site and
+ignore the rendered text. This collapses the flood above:
+
+```csharp
+options.SpamGuard.Enabled = true;
+options.SpamGuard.AggregationFields.Clear();
+options.SpamGuard.AggregationFields.Add("EVENT_ID");
+options.SpamGuard.AggregationFields.Add("CATEGORY");
+```
+
+For this to work, the log call must supply an `EventId`:
+
+```csharp
+logger.LogWarning(new EventId(1001, "RequestFailed"), "Request {RequestId} failed", requestId);
+```
+
+`JournalLogger` surfaces the `EventId` as the `EVENT_ID` entry field. When the
+`EventId` has a name, the field is `"{Id}:{Name}"` (e.g. `1001:RequestFailed`);
+otherwise it is the numeric id (e.g. `1001`).
+
+`EVENT_ID` and `CATEGORY` are reserved journal fields and are available to the
+spam guard regardless of the `WriteCustomKeyValues` setting.
+
+#### Combining strategies
+
+Both key sources can be combined. All configured fields must match for entries to
+collapse:
+
+```csharp
+options.SpamGuard.AggregationFields.Clear();
+options.SpamGuard.AggregationFields.Add("MESSAGE");
+options.SpamGuard.AggregationFields.Add("EVENT_ID");
+options.SpamGuard.AggregationFields.Add("CATEGORY");
+```
+
+#### EventId 0 / absent behavior
+
+The default `EventId` is `0` with no name. `JournalLogger` omits the `EVENT_ID`
+field for such calls, so message-based (the default strategy) behaves exactly as
+before. When EventId-based aggregation is configured, entries without an `EVENT_ID`
+field share a single bucket per `CATEGORY`, which merges aggressively. When opting
+into EventId-based aggregation, assign explicit (ideally source-generated) EventIds
+that are unique per call site.
+
+---
+
 ## See Also
 
 - [Getting Started](getting-started.md) - Basic usage guide

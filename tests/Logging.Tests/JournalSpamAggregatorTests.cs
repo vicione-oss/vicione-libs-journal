@@ -179,6 +179,118 @@ public sealed class JournalSpamAggregatorTests
     }
 
     [Fact]
+    public void Message_based_default_does_not_collapse_unique_messages()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        // Default (message-based) aggregation. Each message is unique, so nothing collapses.
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request 1001 failed", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request 1002 failed", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request 1003 failed", eventId: 42));
+
+        forwarded.Should().HaveCount(3);
+        CountWhere(forwarded, entry => entry.ContainsKey("SPAM_COUNT")).Should().Be(0);
+    }
+
+    [Fact]
+    public void Aggregates_flood_by_event_id_with_unique_messages()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        // EventId-based aggregation: key on the stable call site, ignore the rendered text.
+        options.AggregationFields.Clear();
+        options.AggregationFields.Add("EVENT_ID");
+        options.AggregationFields.Add("CATEGORY");
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request 1001 failed", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request 1002 failed", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request 1003 failed", eventId: 42));
+
+        forwarded.Should().HaveCount(2);
+        forwarded[1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(2);
+    }
+
+    [Fact]
+    public void Event_id_aggregation_keeps_distinct_call_sites_separate()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        options.AggregationFields.Clear();
+        options.AggregationFields.Add("EVENT_ID");
+        options.AggregationFields.Add("CATEGORY");
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Request failed", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Login failed", eventId: 99));
+
+        // Different EventIds are distinct buckets; neither reaches the threshold.
+        forwarded.Should().HaveCount(2);
+        CountWhere(forwarded, entry => entry.ContainsKey("SPAM_COUNT")).Should().Be(0);
+    }
+
+    [Fact]
+    public void Combines_message_and_event_id_fields()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        // Combined: both the rendered message and the EventId must match to collapse.
+        options.AggregationFields.Clear();
+        options.AggregationFields.Add("MESSAGE");
+        options.AggregationFields.Add("EVENT_ID");
+        options.AggregationFields.Add("CATEGORY");
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateEntry("SERVICE", "Same message", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Same message", eventId: 42));
+        aggregator.Enqueue(CreateEntry("SERVICE", "Same message", eventId: 42));
+
+        forwarded.Should().HaveCount(2);
+        forwarded[1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(2);
+    }
+
+    [Fact]
     public void Summary_message_uses_seconds_for_second_scale_windows()
     {
         var forwarded = new List<IReadOnlyDictionary<string, object?>>();
@@ -232,7 +344,6 @@ public sealed class JournalSpamAggregatorTests
     public async Task Uses_fixed_window()
     {
         // Fixed window: expires based on first entry timestamp.
-        // NOT a moving window that resets with each duplicate.
         var forwarded = new ConcurrentBag<IReadOnlyDictionary<string, object?>>();
         var time = new FakeTimeProvider();
         var options = new JournalSpamGuardOptions
@@ -387,6 +498,17 @@ public sealed class JournalSpamAggregatorTests
         };
 
         return JournalEntryFactory.CreateLogEntry(items, message, LogLevel.Error, false, false);
+    }
+
+    private static Dictionary<string, object?> CreateEntry(string category, string message, int eventId)
+    {
+        var items = new[]
+        {
+            new KeyValuePair<string, object?>("CATEGORY", category),
+            new KeyValuePair<string, object?>("EVENT_ID", eventId),
+        };
+
+        return JournalEntryFactory.CreateLogEntry(items, message, LogLevel.Error, true, false);
     }
 
     private static bool HasMessage(IReadOnlyDictionary<string, object?> entry, string expected)

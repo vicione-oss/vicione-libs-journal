@@ -8,6 +8,8 @@ namespace Serilog.Sinks.Journal;
 
 public sealed class JournalSink : ILogEventSink, IDisposable
 {
+    private const string MessageTemplateFieldName = JournalSpamGuardOptionsExtensions.MessageTemplateField;
+
     private readonly SystemdJournalWriter _journalWriter = new();
     private readonly ITextFormatter _formatter;
     private readonly IReadOnlyDictionary<string, object?> _metaDataFields;
@@ -52,12 +54,25 @@ public sealed class JournalSink : ILogEventSink, IDisposable
         formatter.Format(logEvent, writer);
 
         var text = writer.ToString();
-        return JournalEntryFactory.CreateLogEntry(GetFieldsFromLogEvent(logEvent), text, ToLogLevel(logEvent.Level),
+        var entry = JournalEntryFactory.CreateLogEntry(GetFieldsFromLogEvent(logEvent), text, ToLogLevel(logEvent.Level),
             writeCustomKeyValues, writeStructuredData, metaData: metaDataFields);
+        entry[MessageTemplateFieldName] = logEvent.MessageTemplate.Text;
+        return entry;
     }
 
-    private static IEnumerable<KeyValuePair<string, object?>> GetFieldsFromLogEvent(LogEvent logEvent)
-        => [.. logEvent.Properties.Select(p => new KeyValuePair<string, object?>(p.Key, RemoveQuotes(p.Value)))];
+    internal static IEnumerable<KeyValuePair<string, object?>> GetFieldsFromLogEvent(LogEvent logEvent)
+    {
+        // The raw message template is stable per call site (e.g. "Request {RequestId} failed"),
+        // regardless of the rendered values. Surfacing it lets the spam guard aggregate floods
+        // of unique messages that share a call site.
+        foreach (var p in logEvent.Properties)
+        {
+            if (p.Key != MessageTemplateFieldName)
+                yield return new KeyValuePair<string, object?>(p.Key, RemoveQuotes(p.Value));
+        }
+
+        yield return new KeyValuePair<string, object?>(MessageTemplateFieldName, logEvent.MessageTemplate.Text);
+    }
 
     private static object? RemoveQuotes(LogEventPropertyValue logEventValue)
     {

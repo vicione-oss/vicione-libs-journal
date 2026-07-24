@@ -12,6 +12,9 @@
 - `IJournalService.ReadPage` reads `JournalRecord`s older or newer than a cursor or a time without holding a session
 - `IJournalService.GetTimeRange` returns the times of the oldest and the newest entry still in the journal
 - `JournalOptions.Directory` reads the journal files of a directory, such as a copy from another device
+- Surface `MESSAGE_TEMPLATE` on Serilog sink log entries, enabling template-based spam-guard aggregation that collapses floods of unique messages sharing a stable call site (the Serilog analog to EventId + Category aggregation)
+- Add `JournalSpamGuardOptions.AggregateByMessageTemplate()` convenience helper for configuring template-based aggregation on the Serilog sink
+- Surface `EVENT_ID` on log entries and support EventId + Category spam-guard aggregation
 
 ### Fixed
 

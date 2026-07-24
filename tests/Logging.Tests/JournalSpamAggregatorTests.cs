@@ -291,6 +291,35 @@ public sealed class JournalSpamAggregatorTests
     }
 
     [Fact]
+    public void Aggregates_flood_by_message_template_with_unique_messages()
+    {
+        var forwarded = new List<IReadOnlyDictionary<string, object?>>();
+        var time = new FakeTimeProvider();
+        var options = new JournalSpamGuardOptions
+        {
+            Enabled = true,
+            SummaryCountThreshold = 2,
+            Window = TimeSpan.FromSeconds(10),
+            FlushInterval = TimeSpan.FromSeconds(10),
+            TimeProvider = time,
+        };
+
+        // Template-based aggregation (the Serilog analog): key on the stable message
+        // template, ignoring the unique rendered values.
+        options.AggregationFields.Clear();
+        options.AggregationFields.Add("MESSAGE_TEMPLATE");
+
+        using var aggregator = new JournalSpamAggregator(options, forwarded.Add);
+
+        aggregator.Enqueue(CreateTemplateEntry("Request 1001 failed", "Request {RequestId} failed"));
+        aggregator.Enqueue(CreateTemplateEntry("Request 1002 failed", "Request {RequestId} failed"));
+        aggregator.Enqueue(CreateTemplateEntry("Request 1003 failed", "Request {RequestId} failed"));
+
+        forwarded.Should().HaveCount(2);
+        forwarded[1].Should().ContainKey("SPAM_COUNT").WhoseValue.Should().Be(2);
+    }
+
+    [Fact]
     public void Summary_message_uses_seconds_for_second_scale_windows()
     {
         var forwarded = new List<IReadOnlyDictionary<string, object?>>();
@@ -506,6 +535,16 @@ public sealed class JournalSpamAggregatorTests
         {
             new KeyValuePair<string, object?>("CATEGORY", category),
             new KeyValuePair<string, object?>("EVENT_ID", eventId),
+        };
+
+        return JournalEntryFactory.CreateLogEntry(items, message, LogLevel.Error, true, false);
+    }
+
+    private static Dictionary<string, object?> CreateTemplateEntry(string message, string messageTemplate)
+    {
+        var items = new[]
+        {
+            new KeyValuePair<string, object?>("MESSAGE_TEMPLATE", messageTemplate),
         };
 
         return JournalEntryFactory.CreateLogEntry(items, message, LogLevel.Error, true, false);

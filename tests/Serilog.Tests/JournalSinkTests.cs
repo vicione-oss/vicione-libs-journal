@@ -53,7 +53,22 @@ public class JournalSink_
 
         result["MESSAGE"].Should().Be("2 is a test");
         result["TEST_ID"].Should().Be(1);
-        result["SYSLOG_STRUCTURED_DATA"].Should().Be("[journal@32473 TEST_ID=\"1\"]");
+        result["SYSLOG_STRUCTURED_DATA"].Should().Be("[journal@32473 TEST_ID=\"1\" MESSAGE_TEMPLATE=\"{TestId} is a test\"]");
+    }
+
+    [Fact]
+    public void Message_template_field_cannot_be_overridden_by_log_property()
+    {
+        var messageTemplate = new MessageTemplateParser().Parse("Request {MESSAGE_TEMPLATE} failed");
+        var logEvent = new LogEvent(DateTimeOffset.Now, LogEventLevel.Warning, null, messageTemplate,
+        [
+            new LogEventProperty("MESSAGE_TEMPLATE", new ScalarValue(1001)),
+        ]);
+
+        var fields = JournalSink.GetFieldsFromLogEvent(logEvent).ToList();
+
+        fields.Should().ContainSingle(field => field.Key == "MESSAGE_TEMPLATE")
+            .Which.Value.Should().Be("Request {MESSAGE_TEMPLATE} failed");
     }
 
 #pragma warning disable xUnit1004

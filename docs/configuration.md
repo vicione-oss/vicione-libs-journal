@@ -91,6 +91,7 @@ windowing, threshold counting, and summary emission are shared and unchanged.
 | --------------------------- | --------------------------------------- | ---------------------------------------------------- |
 | Message-based (default)     | `MESSAGE`, `CATEGORY`, `PRIORITY`, `EXCEPTION` | Repeated identical messages                    |
 | EventId-based (opt-in)      | `EVENT_ID`, `CATEGORY`                   | Floods with unique text but a stable call site       |
+| Template-based (opt-in)     | `MESSAGE_TEMPLATE`                       | Serilog floods with unique text but a stable call site |
 
 When `AggregationFields` is empty, message-based aggregation is used
 (`MESSAGE`, `CATEGORY`, `PRIORITY`, `EXCEPTION`). This is the default and remains
@@ -137,6 +138,28 @@ otherwise it is the numeric id (e.g. `1001`).
 
 `EVENT_ID` and `CATEGORY` are reserved journal fields and are available to the
 spam guard regardless of the `WriteCustomKeyValues` setting.
+
+#### Template-based (Serilog, opt-in)
+
+Serilog has no `EventId` concept. Its stable per call site key is instead the raw
+message template, which the Serilog sink surfaces as the `MESSAGE_TEMPLATE` entry
+field. Keying on it collapses a flood of unique rendered messages:
+
+```csharp
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Journal(
+        configureSpamGuard: spam => spam.AggregateByMessageTemplate())
+    .CreateLogger();
+
+Log.Warning("Request {RequestId} failed", requestId);
+// "Request 1001 failed", "Request 1002 failed", ... → same MESSAGE_TEMPLATE → collapsed
+```
+
+`MESSAGE_TEMPLATE` is a reserved journal field and is available to the spam guard
+regardless of the `writeCustomKeyValues` setting.
+
+The template (`"Request {RequestId} failed"`) is identical regardless of the
+rendered values, so all entries from the same call site share a bucket.
 
 #### Combining strategies
 

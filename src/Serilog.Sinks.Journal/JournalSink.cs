@@ -14,6 +14,7 @@ public sealed class JournalSink : ILogEventSink, IDisposable
     private readonly ITextFormatter _formatter;
     private readonly IReadOnlyDictionary<string, object?> _metaDataFields;
     private readonly JournalSpamAggregator? _spamAggregator;
+    private readonly IReadOnlySet<string> _spamGuardAggregationFields;
     private readonly bool _writeCustomKeyValues;
     private readonly bool _writeStructuredData;
 
@@ -32,13 +33,17 @@ public sealed class JournalSink : ILogEventSink, IDisposable
         _spamAggregator = spamGuardOptions is { Enabled: true }
             ? new JournalSpamAggregator(spamGuardOptions, entry => _journalWriter.WriteEntry(entry))
             : null;
+        _spamGuardAggregationFields = spamGuardOptions is { Enabled: true }
+            ? new HashSet<string>(JournalSpamAggregator.NormalizeFields(spamGuardOptions), StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1848:LoggerMessage-Delegaten verwenden")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2254:Vorlage muss ein statischer Ausdruck sein")]
     public void Emit(LogEvent logEvent)
     {
-        var entry = CreateEntry(logEvent, _formatter, _metaDataFields, _writeCustomKeyValues, _writeStructuredData);
+        var entry = CreateEntry(logEvent, _formatter, _metaDataFields, _writeCustomKeyValues, _writeStructuredData,
+            _spamGuardAggregationFields);
 
         if (_spamAggregator is { } aggregator)
             aggregator.Enqueue(entry);
@@ -47,31 +52,52 @@ public sealed class JournalSink : ILogEventSink, IDisposable
     }
 
     internal static Dictionary<string, object?> CreateEntry(LogEvent logEvent, ITextFormatter formatter,
-        IReadOnlyDictionary<string, object?> metaDataFields, bool writeCustomKeyValues, bool writeStructuredData)
+        IReadOnlyDictionary<string, object?> metaDataFields, bool writeCustomKeyValues, bool writeStructuredData,
+        IReadOnlySet<string>? spamGuardAggregationFields = null)
     {
         using var writer = new StringWriter();
 
         formatter.Format(logEvent, writer);
 
         var text = writer.ToString();
-        var entry = JournalEntryFactory.CreateLogEntry(GetFieldsFromLogEvent(logEvent), text, ToLogLevel(logEvent.Level),
-            writeCustomKeyValues, writeStructuredData, metaData: metaDataFields);
-        entry[MessageTemplateFieldName] = logEvent.MessageTemplate.Text;
+
+        // MESSAGE_TEMPLATE only feeds customFields - and therefore both the top-level output
+        // and SYSLOG_STRUCTURED_DATA - when the operator explicitly opted into custom
+        // key-values. Including it unconditionally here would leak it into
+        // SYSLOG_STRUCTURED_DATA on every entry regardless of writeCustomKeyValues, since
+        // CreateLogEntry builds structured data from every field it's handed.
+        var fields = GetFieldsFromLogEvent(logEvent, includeMessageTemplate: writeCustomKeyValues);
+        var entry = JournalEntryFactory.CreateLogEntry(fields, text, ToLogLevel(logEvent.Level), writeCustomKeyValues,
+            writeStructuredData, metaData: metaDataFields);
+
+        // When custom key-values are disabled, the spam guard can still key on
+        // MESSAGE_TEMPLATE, but only when it's actually part of the resolved aggregation
+        // fields, and only as a bare top-level field (bypassing SYSLOG_STRUCTURED_DATA
+        // entirely). Consumers with spam guard disabled, or aggregating on other fields, see
+        // no new fields on their entries at all.
+        if (!writeCustomKeyValues && spamGuardAggregationFields?.Contains(MessageTemplateFieldName) == true)
+            entry[MessageTemplateFieldName] = logEvent.MessageTemplate.Text;
+
         return entry;
     }
 
-    internal static IEnumerable<KeyValuePair<string, object?>> GetFieldsFromLogEvent(LogEvent logEvent)
+    internal static IEnumerable<KeyValuePair<string, object?>> GetFieldsFromLogEvent(LogEvent logEvent, bool includeMessageTemplate = true)
     {
-        // The raw message template is stable per call site (e.g. "Request {RequestId} failed"),
-        // regardless of the rendered values. Surfacing it lets the spam guard aggregate floods
-        // of unique messages that share a call site.
+        // MESSAGE_TEMPLATE is reserved: a log property that normalizes to the same field name
+        // (e.g. "MessageTemplate") must not impersonate it, so it's filtered out here rather
+        // than relying on the real value being written last.
         foreach (var p in logEvent.Properties)
         {
-            if (p.Key != MessageTemplateFieldName)
+            if (JournalEntryFactory.CreateFieldName(p.Key) != MessageTemplateFieldName)
                 yield return new KeyValuePair<string, object?>(p.Key, RemoveQuotes(p.Value));
         }
 
-        yield return new KeyValuePair<string, object?>(MessageTemplateFieldName, logEvent.MessageTemplate.Text);
+        // The raw message template is stable per call site (e.g. "Request {RequestId} failed"),
+        // regardless of the rendered values. Surfacing it lets the spam guard aggregate floods
+        // of unique messages that share a call site. Callers that don't want it fed into
+        // customFields (see CreateEntry) pass includeMessageTemplate: false.
+        if (includeMessageTemplate)
+            yield return new KeyValuePair<string, object?>(MessageTemplateFieldName, logEvent.MessageTemplate.Text);
     }
 
     private static object? RemoveQuotes(LogEventPropertyValue logEventValue)

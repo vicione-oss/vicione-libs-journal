@@ -274,7 +274,7 @@ internal sealed class JournalSpamAggregator : IDisposable
         return string.Format(CultureInfo.InvariantCulture, "{0:F0}ms", duration.TotalMilliseconds);
     }
 
-    private static string[] NormalizeFields(JournalSpamGuardOptions options)
+    internal static string[] NormalizeFields(JournalSpamGuardOptions options)
     {
         if (options.AggregationFields.Count == 0)
             return ["MESSAGE", "CATEGORY", "PRIORITY", "EXCEPTION"];

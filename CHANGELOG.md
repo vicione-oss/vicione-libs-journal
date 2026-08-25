@@ -16,6 +16,17 @@
 - Add `JournalSpamGuardOptions.AggregateByMessageTemplate()` convenience helper for configuring template-based aggregation on the Serilog sink
 - Surface `EVENT_ID` on log entries and support EventId + Category spam-guard aggregation
 
+`MESSAGE_TEMPLATE` and `EVENT_ID` are new fields. They are only written to an entry - at the top
+level or inside `SYSLOG_STRUCTURED_DATA` - when `WriteCustomKeyValues` is `true`, or when spam
+guard is enabled *and* that specific field is part of the resolved `AggregationFields` for the
+active strategy (as a bare top-level field only, never inside `SYSLOG_STRUCTURED_DATA`).
+Consumers with spam guard disabled, or aggregating on a different set of fields, gain no new
+fields on their entries at all. `EVENT_ID` is also protected from impersonation by a same-named
+log template property (e.g. `{EventId}`) when no real `EventId` is supplied, and `MESSAGE_TEMPLATE`
+from the Serilog equivalent. `CATEGORY`'s pre-existing behavior (predates this branch) is
+unchanged: it is always written into `SYSLOG_STRUCTURED_DATA` when `WriteStructuredData` is
+`true`, regardless of `WriteCustomKeyValues` or spam guard configuration - as it always has been.
+
 ### Fixed
 
 - With `writeCustomKeyValues` enabled, log properties no longer overwrite `MESSAGE`, `PRIORITY` or `SYSLOG_STRUCTURED_DATA`, and no longer set fields that journald interprets (such as `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO` or `UNIT`). These properties are now written with a `PROP_` prefix, for example `PROP_MESSAGE`. Configured metadata fields are still written as-is

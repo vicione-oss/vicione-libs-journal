@@ -13,6 +13,7 @@ public static class JournalSpamGuardOptionsExtensions
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        options.AggregationFields.Clear();
         options.AggregationFields.Add(MessageTemplateField);
 
         return options;

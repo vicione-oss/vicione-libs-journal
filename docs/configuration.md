@@ -136,8 +136,28 @@ logger.LogWarning(new EventId(1001, "RequestFailed"), "Request {RequestId} faile
 `EventId` has a name, the field is `"{Id}:{Name}"` (e.g. `1001:RequestFailed`);
 otherwise it is the numeric id (e.g. `1001`).
 
-`EVENT_ID` and `CATEGORY` are reserved journal fields and are available to the
-spam guard regardless of the `WriteCustomKeyValues` setting.
+`EVENT_ID` and `CATEGORY` are reserved: a log template placeholder that happens
+to share one of these names (e.g. `logger.LogInformation("{EventId} occurred", businessEventId)`)
+is dropped rather than being written under the reserved key, so it cannot be
+mistaken for the real `EventId`/category.
+
+`EVENT_ID` is a new field. It is written to an entry - as a bare top-level
+field, never inside `SYSLOG_STRUCTURED_DATA` - when `WriteCustomKeyValues` is
+`true`, or when spam guard is enabled *and* `EVENT_ID` is part of the resolved
+`AggregationFields` for the active strategy. If spam guard is disabled, or is
+aggregating on a different set of fields, it is only written when
+`WriteCustomKeyValues` is `true` - a consumer aggregating on `CATEGORY` alone,
+for example, gains no `EVENT_ID` field even with spam guard enabled.
+
+`CATEGORY` pre-dates this feature and its behavior is unchanged: it is always
+written into `SYSLOG_STRUCTURED_DATA` when `WriteStructuredData` is `true`,
+and to the top level when `WriteCustomKeyValues` is `true`, regardless of spam
+guard configuration. It is *not* forced to the top level for spam guard's
+sake. This means the `EVENT_ID` + `CATEGORY` combination above only
+discriminates by category if `WriteCustomKeyValues` is also `true` - with
+`WriteCustomKeyValues` `false` (the default), `CATEGORY` is absent from every
+entry's top level, so the aggregation key effectively collapses to `EVENT_ID`
+alone.
 
 #### Template-based (Serilog, opt-in)
 
@@ -155,8 +175,12 @@ Log.Warning("Request {RequestId} failed", requestId);
 // "Request 1001 failed", "Request 1002 failed", ... → same MESSAGE_TEMPLATE → collapsed
 ```
 
-`MESSAGE_TEMPLATE` is a reserved journal field and is available to the spam guard
-regardless of the `writeCustomKeyValues` setting.
+`MESSAGE_TEMPLATE` is a reserved journal field. It is written to an entry - as
+a bare top-level field, never inside `SYSLOG_STRUCTURED_DATA` - regardless of
+`writeCustomKeyValues`, but only while spam guard is enabled *and*
+`MESSAGE_TEMPLATE` is part of the resolved `AggregationFields` for the active
+strategy. Otherwise it is only written when `writeCustomKeyValues` is `true`,
+same as any other custom field.
 
 The template (`"Request {RequestId} failed"`) is identical regardless of the
 rendered values, so all entries from the same call site share a bucket.

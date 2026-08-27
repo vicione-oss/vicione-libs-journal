@@ -13,6 +13,7 @@ internal sealed class JournalSpamAggregator : IDisposable
     private readonly TimeSpan _cleanupInterval;
     private readonly int _threshold;
     private readonly int _maxBucketCapacity;
+    private readonly bool _requireAllFields;
     private readonly TimeProvider _timeProvider;
     private readonly PeriodicTimer? _timer;
     private readonly CancellationTokenSource? _cts;
@@ -30,6 +31,14 @@ internal sealed class JournalSpamAggregator : IDisposable
         _cleanupInterval = options.FlushInterval > TimeSpan.Zero ? options.FlushInterval : options.Window;
         _threshold = Math.Max(1, options.SummaryCountThreshold);
         _maxBucketCapacity = Math.Max(1, options.MaxBucketCapacity);
+
+        // Every field an operator names explicitly is a discriminator they asked for, so an entry
+        // missing one can't be bucketed meaningfully and is forwarded instead. The built-in default
+        // set is exempt: it deliberately includes fields that are normally absent (CATEGORY unless
+        // WriteCustomKeyValues is set, EXCEPTION always), and leans on MESSAGE and PRIORITY, which
+        // JournalEntryFactory.CreateLogEntry always writes.
+        _requireAllFields = options.AggregationFields.Count > 0;
+
         _buckets = new Dictionary<SpamKey, SpamBucket>(_maxBucketCapacity, SpamKeyComparer.Instance);
 
         if (_windowTicks > 0 && _cleanupInterval > TimeSpan.Zero)
@@ -50,7 +59,7 @@ internal sealed class JournalSpamAggregator : IDisposable
             return;
         }
 
-        var key = SpamKey.Create(entry, _aggregationFields);
+        var key = SpamKey.Create(entry, _aggregationFields, _requireAllFields);
 
         if (key is null)
         {

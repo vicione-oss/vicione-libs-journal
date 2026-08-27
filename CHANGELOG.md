@@ -12,23 +12,15 @@
 - `IJournalService.ReadPage` reads `JournalRecord`s older or newer than a cursor or a time without holding a session
 - `IJournalService.GetTimeRange` returns the times of the oldest and the newest entry still in the journal
 - `JournalOptions.Directory` reads the journal files of a directory, such as a copy from another device
-- Surface `MESSAGE_TEMPLATE` on Serilog sink log entries, enabling template-based spam-guard aggregation that collapses floods of unique messages sharing a stable call site (the Serilog analog to EventId + Category aggregation)
-- Add `JournalSpamGuardOptions.AggregateByMessageTemplate()` convenience helper for configuring template-based aggregation on the Serilog sink
-- Surface `EVENT_ID` on log entries and support EventId + Category spam-guard aggregation
+- EventId-based spam-guard aggregation: `EVENT_ID` is surfaced on log entries and can be listed in `AggregationFields` to collapse floods that share a call site but render unique text
+- Template-based spam-guard aggregation for the Serilog sink: `MESSAGE_TEMPLATE` is surfaced on log entries, with `JournalSpamGuardOptions.AggregateByMessageTemplate()` to configure it
 
-`MESSAGE_TEMPLATE` and `EVENT_ID` are new fields. They are only written to an entry - at the top
-level or inside `SYSLOG_STRUCTURED_DATA` - when `WriteCustomKeyValues` is `true`, or when spam
-guard is enabled *and* that specific field is part of the resolved `AggregationFields` for the
-active strategy (as a bare top-level field only, never inside `SYSLOG_STRUCTURED_DATA`).
-Consumers with spam guard disabled, or aggregating on a different set of fields, gain no new
-fields on their entries at all. `EVENT_ID` is also protected from impersonation by a same-named
-log template property (e.g. `{EventId}`) when no real `EventId` is supplied, and `MESSAGE_TEMPLATE`
-from the Serilog equivalent. `CATEGORY`'s pre-existing behavior (predates this branch) is
-unchanged: it is always written into `SYSLOG_STRUCTURED_DATA` when `WriteStructuredData` is
-`true`, regardless of `WriteCustomKeyValues` or spam guard configuration - as it always has been.
+`EVENT_ID` and `MESSAGE_TEMPLATE` are only written when `WriteCustomKeyValues` is `true`, or when
+spam guard is enabled and the field is part of the active `AggregationFields`. EventId-based aggregation only applies to calls that pass an explicit `EventId`.
 
 ### Fixed
 
+- Log entries are no longer dropped when an entry lacks a field named in `AggregationFields`.
 - With `writeCustomKeyValues` enabled, log properties no longer overwrite `MESSAGE`, `PRIORITY` or `SYSLOG_STRUCTURED_DATA`, and no longer set fields that journald interprets (such as `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO` or `UNIT`). These properties are now written with a `PROP_` prefix, for example `PROP_MESSAGE`. Configured metadata fields are still written as-is
 - Fix filters ignoring a `+` that follows a term repeated from, or contained in, an earlier term
 - Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone

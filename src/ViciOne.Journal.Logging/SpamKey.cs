@@ -13,7 +13,10 @@ internal sealed class SpamKey
         _hashCode = hashCode;
     }
 
-    internal static SpamKey? Create(IReadOnlyDictionary<string, object?> entry, string[] fields)
+    // requireAllFields: when set, an entry that doesn't carry every field produces no key at all.
+    // Set for explicitly configured AggregationFields; the built-in default set tolerates absence
+    // because MESSAGE and PRIORITY are always present.
+    internal static SpamKey? Create(IReadOnlyDictionary<string, object?> entry, string[] fields, bool requireAllFields)
     {
         if (fields.Length == 0)
             return null;
@@ -25,6 +28,14 @@ internal sealed class SpamKey
         {
             entry.TryGetValue(fields[i], out var value);
             var canonical = Canonicalize(value);
+
+            // A configured field the entry doesn't carry leaves the key without the discriminator
+            // the operator asked for - every such entry canonicalizes to the same null and lands
+            // in one bucket, so unrelated entries would be suppressed as if they were repeats.
+            // Absent and present-but-empty are treated alike; neither discriminates.
+            if (requireAllFields && string.IsNullOrEmpty(canonical))
+                return null;
+
             values[i] = canonical;
             hash.Add(canonical, StringComparer.Ordinal);
         }

@@ -132,6 +132,10 @@ For this to work, the log call must supply an `EventId`:
 logger.LogWarning(new EventId(1001, "RequestFailed"), "Request {RequestId} failed", requestId);
 ```
 
+Calls that do not are forwarded unaggregated rather than collapsed - this
+strategy does nothing for them. See
+[Missing aggregation fields](#missing-aggregation-fields).
+
 `JournalLogger` surfaces the `EventId` as the `EVENT_ID` entry field. When the
 `EventId` has a name, the field is `"{Id}:{Name}"` (e.g. `1001:RequestFailed`);
 otherwise it is the numeric id (e.g. `1001`).
@@ -156,8 +160,9 @@ guard configuration. It is *not* forced to the top level for spam guard's
 sake. This means the `EVENT_ID` + `CATEGORY` combination above only
 discriminates by category if `WriteCustomKeyValues` is also `true` - with
 `WriteCustomKeyValues` `false` (the default), `CATEGORY` is absent from every
-entry's top level, so the aggregation key effectively collapses to `EVENT_ID`
-alone.
+entry's top level. Since `CATEGORY` was named explicitly, its absence means
+those entries are forwarded unaggregated rather than bucketed on whatever
+fields remain - see [Missing aggregation fields](#missing-aggregation-fields).
 
 #### Template-based (Serilog, opt-in)
 
@@ -197,14 +202,54 @@ options.SpamGuard.AggregationFields.Add("EVENT_ID");
 options.SpamGuard.AggregationFields.Add("CATEGORY");
 ```
 
-#### EventId 0 / absent behavior
+#### Missing aggregation fields
 
-The default `EventId` is `0` with no name. `JournalLogger` omits the `EVENT_ID`
-field for such calls, so message-based (the default strategy) behaves exactly as
-before. When EventId-based aggregation is configured, entries without an `EVENT_ID`
-field share a single bucket per `CATEGORY`, which merges aggressively. When opting
-into EventId-based aggregation, assign explicit (ideally source-generated) EventIds
-that are unique per call site.
+**An entry that does not carry every explicitly configured aggregation field is
+forwarded unaggregated.** It is never bucketed on the fields that remain.
+
+This matters because an absent field is not a value - it would canonicalize to
+the same `null` on every entry that lacks it, so *all* of them would share one
+bucket and be suppressed as if they were repeats of each other. The spam guard
+fails open instead: losing a deduplication opportunity is acceptable, losing log
+lines is not.
+
+The common way to reach this is the default `EventId`. It is `0` with no name on
+every `ILogger` overload that does not take one, and `JournalLogger` omits the
+`EVENT_ID` field for that case. So with EventId-based aggregation configured:
+
+```csharp
+logger.LogWarning("Request {RequestId} failed", requestId);   // no EventId
+// → no EVENT_ID field → forwarded unaggregated, every time
+```
+
+**The consequence is that EventId-based aggregation provides no spam protection
+at all for call sites without an explicit `EventId`.** Nothing is lost, but
+nothing is collapsed either. To actually get the benefit, give every call site a
+distinct id. The `[LoggerMessage]` source generator is the reliable way to do
+this - since .NET 8 it derives a stable id per method from the method name when
+`EventId` is omitted, so ids cannot silently go missing:
+
+```csharp
+[LoggerMessage(Level = LogLevel.Warning, Message = "Request {RequestId} failed")]
+public static partial void RequestFailed(ILogger logger, int requestId);
+```
+
+This applies to any explicitly configured field, not just `EVENT_ID` - the same
+holds for `CATEGORY` without `WriteCustomKeyValues`, or `MESSAGE_TEMPLATE` on an
+entry that has none. A field whose value is present but empty counts as missing
+too; neither discriminates.
+
+The built-in default field set (`MESSAGE`, `CATEGORY`, `PRIORITY`, `EXCEPTION`)
+is exempt from this check and always aggregates. It deliberately contains fields
+that are normally absent, and relies on `MESSAGE` and `PRIORITY` - which are
+written to every entry - to discriminate. Message-based aggregation therefore
+behaves exactly as before.
+
+> One consequence of that exemption: listing the default fields *explicitly*
+> is not the same as leaving `AggregationFields` empty. `EXCEPTION` in
+> particular is never written to an entry, so naming it explicitly means no
+> entry ever satisfies the field set and nothing is aggregated. Leave
+> `AggregationFields` empty to get the default strategy.
 
 ---
 

@@ -9,6 +9,36 @@ internal partial class JournalEntryFactory
 {
     private const string DefaultSdId = "journal@32473";
     private const int MaxJournalFieldLength = 32;
+    private const string ReservedFieldPrefix = "PROP_";
+
+    // Fields the sink writes itself or that journald and syslog consumers interpret (see systemd.journal-fields(7))
+    // Custom key-values with these names are written with ReservedFieldPrefix instead
+    private static readonly HashSet<string> s_journalReservedFields = new(StringComparer.Ordinal)
+    {
+        // Written by the sink
+        "MESSAGE",
+        "PRIORITY",
+        "SYSLOG_STRUCTURED_DATA",
+
+        // User journal fields with a special meaning
+        "MESSAGE_ID",
+        "CODE_FILE",
+        "CODE_LINE",
+        "CODE_FUNC",
+        "ERRNO",
+        "INVOCATION_ID",
+        "USER_INVOCATION_ID",
+        "SYSLOG_FACILITY",
+        "SYSLOG_IDENTIFIER",
+        "SYSLOG_PID",
+        "SYSLOG_TIMESTAMP",
+        "SYSLOG_RAW",
+        "DOCUMENTATION",
+        "TID",
+        "UNIT",
+        "USER_UNIT",
+        "OBJECT_PID",
+    };
 
     // RFC 5424 standard fields that should be excluded from STRUCTURED-DATA
     // These fields are part of the syslog message header
@@ -92,7 +122,7 @@ internal partial class JournalEntryFactory
         if (writeCustomKeyValues)
         {
             foreach (var (key, value) in customFields)
-                dictionary[key] = value;
+                dictionary[CreateCustomFieldName(key)] = value;
         }
         if (writeStructuredData)
             dictionary["SYSLOG_STRUCTURED_DATA"] = structuredData;
@@ -173,6 +203,10 @@ internal partial class JournalEntryFactory
             return nameBuilder.ToString();
         });
     }
+
+    // Keeps custom key-values from overwriting or changing the meaning of reserved journal fields
+    internal static string CreateCustomFieldName(string fieldName)
+        => s_journalReservedFields.Contains(fieldName) ? ReservedFieldPrefix + fieldName : fieldName;
 
     private static string InterpretCamelCase(string value)
         => CamelCaseRegex().Replace(value, "$1_$2");

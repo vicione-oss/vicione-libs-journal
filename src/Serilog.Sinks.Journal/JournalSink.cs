@@ -36,18 +36,24 @@ public sealed class JournalSink : ILogEventSink, IDisposable
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2254:Vorlage muss ein statischer Ausdruck sein")]
     public void Emit(LogEvent logEvent)
     {
-        using var writer = new StringWriter();
-
-        _formatter.Format(logEvent, writer);
-
-        var text = writer.ToString();
-        var entry = JournalEntryFactory.CreateLogEntry(GetFieldsFromLogEvent(logEvent), text, ToLogLevel(logEvent.Level),
-            _writeCustomKeyValues, _writeStructuredData, metaData: _metaDataFields);
+        var entry = CreateEntry(logEvent, _formatter, _metaDataFields, _writeCustomKeyValues, _writeStructuredData);
 
         if (_spamAggregator is { } aggregator)
             aggregator.Enqueue(entry);
         else
             _journalWriter.WriteEntry(entry);
+    }
+
+    internal static Dictionary<string, object?> CreateEntry(LogEvent logEvent, ITextFormatter formatter,
+        IReadOnlyDictionary<string, object?> metaDataFields, bool writeCustomKeyValues, bool writeStructuredData)
+    {
+        using var writer = new StringWriter();
+
+        formatter.Format(logEvent, writer);
+
+        var text = writer.ToString();
+        return JournalEntryFactory.CreateLogEntry(GetFieldsFromLogEvent(logEvent), text, ToLogLevel(logEvent.Level),
+            writeCustomKeyValues, writeStructuredData, metaData: metaDataFields);
     }
 
     private static IEnumerable<KeyValuePair<string, object?>> GetFieldsFromLogEvent(LogEvent logEvent)

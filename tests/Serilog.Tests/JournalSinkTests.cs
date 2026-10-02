@@ -1,4 +1,8 @@
 ﻿using System.Globalization;
+using AwesomeAssertions;
+using Serilog.Events;
+using Serilog.Formatting.Display;
+using Serilog.Parsing;
 using Serilog.Sinks.Journal;
 
 namespace Serilog.Tests;
@@ -32,6 +36,24 @@ public class JournalSink_
 
             Log.CloseAndFlush();
         }
+    }
+
+    [Fact]
+    public void Meta_data_takes_precedence_over_log_event_properties()
+    {
+        var logEvent = new LogEvent(DateTimeOffset.Now, LogEventLevel.Information, null,
+            new MessageTemplateParser().Parse("{TestId} is a test"), [new LogEventProperty("TestId", new ScalarValue(2))]);
+        var metaData = new Dictionary<string, object?>()
+        {
+            { "TEST_ID", 1 },
+        };
+
+        var result = JournalSink.CreateEntry(logEvent, new MessageTemplateTextFormatter("{Message}", CultureInfo.InvariantCulture),
+            metaData, true, true);
+
+        result["MESSAGE"].Should().Be("2 is a test");
+        result["TEST_ID"].Should().Be(1);
+        result["SYSLOG_STRUCTURED_DATA"].Should().Be("[journal@32473 TEST_ID=\"1\"]");
     }
 
 #pragma warning disable xUnit1004

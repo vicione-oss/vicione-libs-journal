@@ -94,6 +94,11 @@ internal partial class JournalEntryFactory
     /// Creates the journal fields for a log entry.
     /// </summary>
     /// <param name="keyValueList">Key-values from the log state; reserved field names are written with a PROP_ prefix</param>
+    /// <param name="message">The rendered log message, written as MESSAGE</param>
+    /// <param name="logLevel">The log level, written as PRIORITY</param>
+    /// <param name="writeCustomKeyValues">Whether to write the key-values and metadata as separate journal fields</param>
+    /// <param name="writeStructuredData">Whether to write the key-values and metadata as SYSLOG_STRUCTURED_DATA</param>
+    /// <param name="prefix">Prefix added to MESSAGE</param>
     /// <param name="metaData">Fields configured by the user; written as-is, after <paramref name="keyValueList"/></param>
     public static Dictionary<string, object?> CreateLogEntry(IEnumerable<KeyValuePair<string, object?>> keyValueList,
         string message, LogLevel logLevel, bool writeCustomKeyValues, bool writeStructuredData, string prefix = "",

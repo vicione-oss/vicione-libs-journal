@@ -51,7 +51,7 @@ The `JournalOpeningMode` enum controls which journal files are opened for readin
 | `WriteCustomKeyValues` | `bool`                        | `false`     | Write custom key-value pairs from log state  |
 | `SpamGuard`            | `JournalSpamGuardOptions`     | Default     | Spam protection configuration                |
 
-With `WriteCustomKeyValues`, a key-value whose field name is reserved by the sink or journald (`MESSAGE`, `PRIORITY`, `SYSLOG_STRUCTURED_DATA`, `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO`, `UNIT`, ...) is written with a `PROP_` prefix, for example `{Message}` as `PROP_MESSAGE`.
+With `WriteCustomKeyValues`, a key-value whose field name is reserved by the sink or journald (`MESSAGE`, `PRIORITY`, `SYSLOG_STRUCTURED_DATA`, `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO`, `UNIT`, ...) is written with a `PROP_` prefix, for example `{Message}` as `PROP_MESSAGE`. `MetaDataFields` are written as configured, so they can still set fields such as `SYSLOG_IDENTIFIER`.
 
 ---
 

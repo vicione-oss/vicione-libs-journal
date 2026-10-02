@@ -90,17 +90,21 @@ internal partial class JournalEntryFactory
     };
     private static readonly ConcurrentDictionary<string, string> s_fieldNameCache = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Creates the journal fields for a log entry.
+    /// </summary>
+    /// <param name="keyValueList">Key-values from the log state; reserved field names are written with a PROP_ prefix</param>
+    /// <param name="metaData">Fields configured by the user; written as-is, after <paramref name="keyValueList"/></param>
     public static Dictionary<string, object?> CreateLogEntry(IEnumerable<KeyValuePair<string, object?>> keyValueList,
-        string message, LogLevel logLevel, bool writeCustomKeyValues, bool writeStructuredData, string prefix = "")
+        string message, LogLevel logLevel, bool writeCustomKeyValues, bool writeStructuredData, string prefix = "",
+        IEnumerable<KeyValuePair<string, object?>>? metaData = null)
     {
         Dictionary<string, object?> customFields = new(StringComparer.Ordinal);
-        foreach (var (key, value) in keyValueList)
-        {
-            var fieldName = CreateFieldName(key);
-            if (string.IsNullOrEmpty(fieldName))
-                continue;
-            customFields[fieldName] = value;
-        }
+        Dictionary<string, object?> journalFields = new(StringComparer.Ordinal);
+        AddCustomFields(keyValueList, isMetaData: false, customFields, journalFields);
+        if (metaData is not null)
+            AddCustomFields(metaData, isMetaData: true, customFields, journalFields);
+
         var structuredData = string.Empty;
 
         if (writeStructuredData)
@@ -112,7 +116,7 @@ internal partial class JournalEntryFactory
         }
 
         // MESSAGE and PRIORITY + customFields + SYSLOG_STRUCTURED_DATA
-        var count = 2 + (writeCustomKeyValues ? customFields.Count : 0) + (writeStructuredData ? 1 : 0);
+        var count = 2 + (writeCustomKeyValues ? journalFields.Count : 0) + (writeStructuredData ? 1 : 0);
         Dictionary<string, object?> dictionary = new(count)
         {
             ["MESSAGE"] = $"{prefix}{message}",
@@ -121,13 +125,27 @@ internal partial class JournalEntryFactory
 
         if (writeCustomKeyValues)
         {
-            foreach (var (key, value) in customFields)
-                dictionary[CreateCustomFieldName(key)] = value;
+            foreach (var (key, value) in journalFields)
+                dictionary[key] = value;
         }
         if (writeStructuredData)
             dictionary["SYSLOG_STRUCTURED_DATA"] = structuredData;
 
         return dictionary;
+    }
+
+    // customFields is keyed by field name (for structured data), journalFields by the name written to the journal
+    private static void AddCustomFields(IEnumerable<KeyValuePair<string, object?>> keyValueList, bool isMetaData,
+        Dictionary<string, object?> customFields, Dictionary<string, object?> journalFields)
+    {
+        foreach (var (key, value) in keyValueList)
+        {
+            var fieldName = CreateFieldName(key);
+            if (string.IsNullOrEmpty(fieldName))
+                continue;
+            customFields[fieldName] = value;
+            journalFields[isMetaData ? fieldName : CreateCustomFieldName(fieldName)] = value;
+        }
     }
 
     /// <summary>

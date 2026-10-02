@@ -41,9 +41,8 @@ public sealed class JournalSink : ILogEventSink, IDisposable
         _formatter.Format(logEvent, writer);
 
         var text = writer.ToString();
-        var fields = _metaDataFields.Concat(GetFieldsFromLogEvent(logEvent));
-        var entry = JournalEntryFactory.CreateLogEntry(fields, text, ToLogLevel(logEvent.Level), _writeCustomKeyValues,
-            _writeStructuredData);
+        var entry = JournalEntryFactory.CreateLogEntry(GetFieldsFromLogEvent(logEvent), text, ToLogLevel(logEvent.Level),
+            _writeCustomKeyValues, _writeStructuredData, metaData: _metaDataFields);
 
         if (_spamAggregator is { } aggregator)
             aggregator.Enqueue(entry);

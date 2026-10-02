@@ -357,6 +357,26 @@ public class JournalLogger_CreateLogEntry
     }
 
     [Fact]
+    public void Meta_data_sets_reserved_journal_fields()
+    {
+        var keyValueList = new List<KeyValuePair<string, object?>> { new("SyslogIdentifier", "raw value") };
+        var metaData = new Dictionary<string, object?>
+            {
+                { "SYSLOG_IDENTIFIER", "MyApp" },
+                { "SYSLOG_FACILITY", 16 },
+                { "UNIT", "my.service" }
+            };
+
+        var result = JournalEntryFactory.CreateLogEntry(keyValueList, "Test message", LogLevel.Information, true, false,
+            metaData: metaData);
+
+        result["SYSLOG_IDENTIFIER"].Should().Be("MyApp");
+        result["SYSLOG_FACILITY"].Should().Be(16);
+        result["UNIT"].Should().Be("my.service");
+        result["PROP_SYSLOG_IDENTIFIER"].Should().Be("raw value");
+    }
+
+    [Fact]
     public void Writes_other_custom_fields_unchanged()
     {
         var keyValueList = new List<KeyValuePair<string, object?>>

@@ -305,4 +305,89 @@ public class JournalLogger_CreateLogEntry
         // SYSLOG_STRUCTURED_DATA field should not be present when there are no custom fields
         result.Should().NotContainKey("SYSLOG_STRUCTURED_DATA");
     }
+
+    [Fact]
+    public void Custom_fields_do_not_overwrite_message_and_priority()
+    {
+        var keyValueList = new List<KeyValuePair<string, object?>>
+            {
+                new("Message", "raw value"),
+                new("Priority", "high")
+            };
+
+        var result = JournalEntryFactory.CreateLogEntry(keyValueList, "rendered message", LogLevel.Error, true, false);
+
+        result["MESSAGE"].Should().Be("rendered message");
+        result["PRIORITY"].Should().Be("3");
+        result["PROP_MESSAGE"].Should().Be("raw value");
+        result["PROP_PRIORITY"].Should().Be("high");
+    }
+
+    [Fact]
+    public void Custom_fields_do_not_overwrite_structured_data()
+    {
+        var keyValueList = new List<KeyValuePair<string, object?>>
+            {
+                new("testField", "testValue"),
+                new("SyslogStructuredData", "raw value")
+            };
+
+        var result = JournalEntryFactory.CreateLogEntry(keyValueList, "Test message", LogLevel.Information, true, true);
+
+        result["SYSLOG_STRUCTURED_DATA"].Should().Be("[journal@32473 TEST_FIELD=\"testValue\"]");
+        result["PROP_SYSLOG_STRUCTURED_DATA"].Should().Be("raw value");
+    }
+
+    [Theory]
+    [InlineData("SyslogIdentifier", "SYSLOG_IDENTIFIER")]
+    [InlineData("SyslogFacility", "SYSLOG_FACILITY")]
+    [InlineData("SyslogPid", "SYSLOG_PID")]
+    [InlineData("MessageId", "MESSAGE_ID")]
+    [InlineData("CodeFile", "CODE_FILE")]
+    [InlineData("Errno", "ERRNO")]
+    [InlineData("Unit", "UNIT")]
+    public void Custom_fields_do_not_set_reserved_journal_fields(string key, string fieldName)
+    {
+        var keyValueList = new List<KeyValuePair<string, object?>> { new(key, "raw value") };
+
+        var result = JournalEntryFactory.CreateLogEntry(keyValueList, "Test message", LogLevel.Information, true, false);
+
+        result.Should().NotContainKey(fieldName);
+        result[$"PROP_{fieldName}"].Should().Be("raw value");
+    }
+
+    [Fact]
+    public void Meta_data_sets_reserved_journal_fields()
+    {
+        var keyValueList = new List<KeyValuePair<string, object?>> { new("SyslogIdentifier", "raw value") };
+        var metaData = new Dictionary<string, object?>
+            {
+                { "SYSLOG_IDENTIFIER", "MyApp" },
+                { "SYSLOG_FACILITY", 16 },
+                { "UNIT", "my.service" }
+            };
+
+        var result = JournalEntryFactory.CreateLogEntry(keyValueList, "Test message", LogLevel.Information, true, false,
+            metaData: metaData);
+
+        result["SYSLOG_IDENTIFIER"].Should().Be("MyApp");
+        result["SYSLOG_FACILITY"].Should().Be(16);
+        result["UNIT"].Should().Be("my.service");
+        result["PROP_SYSLOG_IDENTIFIER"].Should().Be("raw value");
+    }
+
+    [Fact]
+    public void Writes_other_custom_fields_unchanged()
+    {
+        var keyValueList = new List<KeyValuePair<string, object?>>
+            {
+                new("SourceContext", "MyEngine"),
+                new("EventId", 42)
+            };
+
+        var result = JournalEntryFactory.CreateLogEntry(keyValueList, "Test message", LogLevel.Information, true, false);
+
+        result["SOURCE_CONTEXT"].Should().Be("MyEngine");
+        result["EVENT_ID"].Should().Be(42);
+    }
 }

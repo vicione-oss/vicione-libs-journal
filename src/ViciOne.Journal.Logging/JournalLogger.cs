@@ -19,15 +19,14 @@ internal partial class JournalLogger(string prefix, string category, IExternalSc
     {
         if (IsEnabled(logLevel) && state is IReadOnlyList<KeyValuePair<string, object?>> keyValueList)
         {
-            var list = keyValueList.Concat([.. metaData]);
+            var list = keyValueList.Where(l => l.Key != TemplateKey);
 
-            list = list.Where(l => l.Key != TemplateKey);
-
+            IEnumerable<KeyValuePair<string, object?>> metaDataFields = metaData;
             if (!string.IsNullOrEmpty(category))
-                list = list.Append(new KeyValuePair<string, object?>("CATEGORY", category));
+                metaDataFields = metaDataFields.Append(new KeyValuePair<string, object?>("CATEGORY", category));
 
             _log(JournalEntryFactory.CreateLogEntry(list, formatter(state, exception), logLevel, writeCustomKeyValues,
-                writeStructuredData, prefix));
+                writeStructuredData, prefix, metaDataFields));
         }
     }
 }

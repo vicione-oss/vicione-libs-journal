@@ -9,6 +9,36 @@ internal partial class JournalEntryFactory
 {
     private const string DefaultSdId = "journal@32473";
     private const int MaxJournalFieldLength = 32;
+    private const string ReservedFieldPrefix = "PROP_";
+
+    // Fields the sink writes itself or that journald and syslog consumers interpret (see systemd.journal-fields(7))
+    // Custom key-values with these names are written with ReservedFieldPrefix instead
+    private static readonly HashSet<string> s_journalReservedFields = new(StringComparer.Ordinal)
+    {
+        // Written by the sink
+        "MESSAGE",
+        "PRIORITY",
+        "SYSLOG_STRUCTURED_DATA",
+
+        // User journal fields with a special meaning
+        "MESSAGE_ID",
+        "CODE_FILE",
+        "CODE_LINE",
+        "CODE_FUNC",
+        "ERRNO",
+        "INVOCATION_ID",
+        "USER_INVOCATION_ID",
+        "SYSLOG_FACILITY",
+        "SYSLOG_IDENTIFIER",
+        "SYSLOG_PID",
+        "SYSLOG_TIMESTAMP",
+        "SYSLOG_RAW",
+        "DOCUMENTATION",
+        "TID",
+        "UNIT",
+        "USER_UNIT",
+        "OBJECT_PID",
+    };
 
     // RFC 5424 standard fields that should be excluded from STRUCTURED-DATA
     // These fields are part of the syslog message header
@@ -60,17 +90,26 @@ internal partial class JournalEntryFactory
     };
     private static readonly ConcurrentDictionary<string, string> s_fieldNameCache = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Creates the journal fields for a log entry.
+    /// </summary>
+    /// <param name="keyValueList">Key-values from the log state; reserved field names are written with a PROP_ prefix</param>
+    /// <param name="message">The rendered log message, written as MESSAGE</param>
+    /// <param name="logLevel">The log level, written as PRIORITY</param>
+    /// <param name="writeCustomKeyValues">Whether to write the key-values and metadata as separate journal fields</param>
+    /// <param name="writeStructuredData">Whether to write the key-values and metadata as SYSLOG_STRUCTURED_DATA</param>
+    /// <param name="prefix">Prefix added to MESSAGE</param>
+    /// <param name="metaData">Fields configured by the user; written as-is, after <paramref name="keyValueList"/></param>
     public static Dictionary<string, object?> CreateLogEntry(IEnumerable<KeyValuePair<string, object?>> keyValueList,
-        string message, LogLevel logLevel, bool writeCustomKeyValues, bool writeStructuredData, string prefix = "")
+        string message, LogLevel logLevel, bool writeCustomKeyValues, bool writeStructuredData, string prefix = "",
+        IEnumerable<KeyValuePair<string, object?>>? metaData = null)
     {
         Dictionary<string, object?> customFields = new(StringComparer.Ordinal);
-        foreach (var (key, value) in keyValueList)
-        {
-            var fieldName = CreateFieldName(key);
-            if (string.IsNullOrEmpty(fieldName))
-                continue;
-            customFields[fieldName] = value;
-        }
+        Dictionary<string, object?> journalFields = new(StringComparer.Ordinal);
+        AddCustomFields(keyValueList, isMetaData: false, customFields, journalFields);
+        if (metaData is not null)
+            AddCustomFields(metaData, isMetaData: true, customFields, journalFields);
+
         var structuredData = string.Empty;
 
         if (writeStructuredData)
@@ -82,7 +121,7 @@ internal partial class JournalEntryFactory
         }
 
         // MESSAGE and PRIORITY + customFields + SYSLOG_STRUCTURED_DATA
-        var count = 2 + (writeCustomKeyValues ? customFields.Count : 0) + (writeStructuredData ? 1 : 0);
+        var count = 2 + (writeCustomKeyValues ? journalFields.Count : 0) + (writeStructuredData ? 1 : 0);
         Dictionary<string, object?> dictionary = new(count)
         {
             ["MESSAGE"] = $"{prefix}{message}",
@@ -91,13 +130,27 @@ internal partial class JournalEntryFactory
 
         if (writeCustomKeyValues)
         {
-            foreach (var (key, value) in customFields)
+            foreach (var (key, value) in journalFields)
                 dictionary[key] = value;
         }
         if (writeStructuredData)
             dictionary["SYSLOG_STRUCTURED_DATA"] = structuredData;
 
         return dictionary;
+    }
+
+    // customFields is keyed by field name (for structured data), journalFields by the name written to the journal
+    private static void AddCustomFields(IEnumerable<KeyValuePair<string, object?>> keyValueList, bool isMetaData,
+        Dictionary<string, object?> customFields, Dictionary<string, object?> journalFields)
+    {
+        foreach (var (key, value) in keyValueList)
+        {
+            var fieldName = CreateFieldName(key);
+            if (string.IsNullOrEmpty(fieldName))
+                continue;
+            customFields[fieldName] = value;
+            journalFields[isMetaData ? fieldName : CreateCustomFieldName(fieldName)] = value;
+        }
     }
 
     /// <summary>
@@ -173,6 +226,10 @@ internal partial class JournalEntryFactory
             return nameBuilder.ToString();
         });
     }
+
+    // Keeps custom key-values from overwriting or changing the meaning of reserved journal fields
+    internal static string CreateCustomFieldName(string fieldName)
+        => s_journalReservedFields.Contains(fieldName) ? ReservedFieldPrefix + fieldName : fieldName;
 
     private static string InterpretCamelCase(string value)
         => CamelCaseRegex().Replace(value, "$1_$2");

@@ -124,6 +124,30 @@ public class JournalLogger_
             });
     }
 
+    [Fact]
+    public void Can_use_reserved_field_names_in_meta_data()
+    {
+        IReadOnlyDictionary<string, object?> result = new Dictionary<string, object?>();
+        var logger = new JournalLogger("", "Test", null, entry => result = entry, new Dictionary<string, object?>()
+        {
+            { "SYSLOG_IDENTIFIER", "MyApp" }
+        }, true, true);
+
+        logger.LogInformation("This is a {SyslogIdentifier}", "test");
+
+        result.Should().SatisfyRespectively(
+            p => p.Should().BeEquivalentTo(new KeyValuePair<string, string>("MESSAGE", "This is a test")),
+            p => p.Should().BeEquivalentTo(new KeyValuePair<string, string>("PRIORITY", "6")),
+            p => p.Should().BeEquivalentTo(new KeyValuePair<string, string>("PROP_SYSLOG_IDENTIFIER", "test")),
+            p => p.Should().BeEquivalentTo(new KeyValuePair<string, string>("SYSLOG_IDENTIFIER", "MyApp")),
+            p => p.Should().BeEquivalentTo(new KeyValuePair<string, string>("CATEGORY", "Test")),
+            p =>
+            {
+                p.Key.Should().Be("SYSLOG_STRUCTURED_DATA");
+                p.Value?.ToString().Should().NotContain("SYSLOG_IDENTIFIER");
+            });
+    }
+
 #pragma warning disable xUnit1004
     [Fact(Skip = "Creates real journal entries")]
 #pragma warning restore xUnit1004

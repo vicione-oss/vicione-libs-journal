@@ -40,6 +40,17 @@ public class JournalService_GetLogs
     }
 
     [Fact]
+    public async Task Reads_from_the_instant_of_since_whatever_its_offset_Async()
+    {
+        using var service = CreateService();
+        var chathamIslands = TimeSpan.FromHours(13.75);
+
+        var logs = await service.GetLogs(At(1).ToOffset(chathamIslands), "asc", cancellationToken: TestContext.Current.CancellationToken);
+
+        logs.Select(l => l["MESSAGE"]).Should().Equal("second", "third", "fourth");
+    }
+
+    [Fact]
     public async Task Returns_only_entries_matching_the_filter_Async()
     {
         using var service = CreateService();

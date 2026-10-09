@@ -39,6 +39,18 @@ public class JournalService_GetLogs
         logs.Select(l => l["MESSAGE"]).Should().Equal("third", "second");
     }
 
+    [Theory]
+    [InlineData("DESC")]
+    [InlineData("Desc")]
+    public async Task Accepts_the_descending_order_in_any_case_Async(string order)
+    {
+        using var service = CreateService();
+
+        var logs = await service.GetLogs(At(1), order, limit: 2, cancellationToken: TestContext.Current.CancellationToken);
+
+        logs.Select(l => l["MESSAGE"]).Should().Equal("third", "second");
+    }
+
     [Fact]
     public async Task Reads_from_the_instant_of_since_whatever_its_offset_Async()
     {

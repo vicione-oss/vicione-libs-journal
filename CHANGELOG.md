@@ -13,6 +13,7 @@
 - Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone
 - Fix `GetLogs` returning ascending order for `DESC` or any other case than `desc`
 - Fix filter values in double quotes never matching; the quotes are removed and no longer required for values with spaces
+- Fix follow sessions missing entries from journal files created after they opened, such as after a rotation
 
 ### Changed
 

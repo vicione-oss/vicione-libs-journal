@@ -650,6 +650,16 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         }
     }
 
+    public void ProcessChanges()
+    {
+        // A zero timeout only processes pending inotify events. The first call also sets up the watches.
+        lock (_syncLock)
+        {
+            var ret = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, 0));
+            CheckNativeResult(ret, "sd_journal_wait");
+        }
+    }
+
     /// <summary>
     /// Enumerates all available fields in the journal.
     /// </summary>

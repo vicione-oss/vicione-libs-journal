@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Collections.Concurrent;
+using System.Globalization;
 using ViciOne.Journal;
 
 namespace Journal.Tests;
@@ -20,7 +21,11 @@ internal sealed record FakeJournalEntry(long Sequence, DateTimeOffset Timestamp,
 /// rules for seeking, stepping and matching. Entries appended to the list after a seek
 /// become visible to later <see cref="Next"/> calls, as new entries do in a real journal.
 /// </summary>
-internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries) : ISystemdJournal
+/// <param name="newFileEntries">
+/// Entries in a journal file created after opening, such as after a rotation. Like sd-journal,
+/// the fake only sees them after <see cref="ProcessChanges"/>.
+/// </param>
+internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, ConcurrentQueue<FakeJournalEntry>? newFileEntries = null) : ISystemdJournal
 {
     private readonly List<List<string>> _matchGroups = [[]];
     private int? _current;
@@ -103,6 +108,12 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries) : ISyst
 
     public List<string> EnumerateUniqueFieldValues(string field)
         => [.. entries.Where(e => e.Fields.ContainsKey(field)).Select(e => $"{field}={e.Fields[field]}").Distinct()];
+
+    public void ProcessChanges()
+    {
+        while (newFileEntries is not null && newFileEntries.TryDequeue(out var entry))
+            entries.Add(entry);
+    }
 
     public Dictionary<int, int> GetPriorityCountsSince(DateTime since, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();

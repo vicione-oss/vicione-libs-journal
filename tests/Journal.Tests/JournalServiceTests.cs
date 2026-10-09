@@ -1,4 +1,5 @@
-﻿using AwesomeAssertions;
+﻿using System.Collections.Concurrent;
+using AwesomeAssertions;
 using ViciOne.Journal;
 
 namespace Journal.Tests;
@@ -70,5 +71,26 @@ public class JournalService_GetLogs
         var logs = await service.GetLogs(At(0), "asc", filter: "_SYSTEMD_UNIT=a.service", cancellationToken: TestContext.Current.CancellationToken);
 
         logs.Select(l => l["MESSAGE"]).Should().Equal("first", "third");
+    }
+}
+
+public class JournalService_CreateFollower
+{
+    [Fact]
+    public async Task Delivers_entries_from_a_journal_file_created_after_start_Async()
+    {
+        List<FakeJournalEntry> entries = [];
+        ConcurrentQueue<FakeJournalEntry> newFileEntries = [];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries, newFileEntries));
+        using var follower = await service.CreateFollower(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        TaskCompletionSource<string> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        follower.NewEntry += entry => received.TrySetResult(entry["MESSAGE"]);
+        follower.Start(0);
+
+        newFileEntries.Enqueue(FakeJournalEntry.At(DateTimeOffset.UtcNow, "MESSAGE=after rotation"));
+
+        var message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        message.Should().Be("after rotation");
+        await follower.Stop();
     }
 }

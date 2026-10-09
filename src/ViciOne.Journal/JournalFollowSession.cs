@@ -53,6 +53,8 @@ public sealed class JournalFollowSession : IJournalFollowSession
                 // Collect all new entries on the dedicated thread
                 var entries = _journalThread.Execute(j =>
                 {
+                    j.ProcessChanges();
+
                     var list = new List<IReadOnlyDictionary<string, string>>();
                     while (j.Next())
                         list.Add(j.GetCurrentEntry());

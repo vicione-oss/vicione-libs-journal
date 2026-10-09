@@ -434,6 +434,38 @@ public class JournalService_CreateFollower
     }
 }
 
+public class JournalService_CreateFollower_Records
+{
+    private static readonly JournalFieldSet s_fields = new("MESSAGE");
+
+    [Fact]
+    public async Task Delivers_the_recent_and_then_the_new_entries_in_one_batch_per_interval_Async()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(1), "MESSAGE=first", "PRIORITY=6"),
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(2), "MESSAGE=second", "PRIORITY=4"),
+        ];
+        ConcurrentQueue<FakeJournalEntry> newFileEntries = [];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries, newFileEntries));
+        using var follower = await service.CreateFollower(TimeSpan.FromMilliseconds(250), s_fields, TestContext.Current.CancellationToken);
+        ConcurrentQueue<IReadOnlyList<JournalRecord>> batches = [];
+        follower.NewRecords += batches.Enqueue;
+
+        follower.Start(1);
+        await Task.Delay(TimeSpan.FromMilliseconds(400), TestContext.Current.CancellationToken);
+        newFileEntries.Enqueue(FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(3), "MESSAGE=third", "PRIORITY=3"));
+        newFileEntries.Enqueue(FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(3), "MESSAGE=fourth", "PRIORITY=3"));
+        await Task.Delay(TimeSpan.FromMilliseconds(400), TestContext.Current.CancellationToken);
+        await follower.Stop();
+
+        batches.Select(b => b.Select(r => r["MESSAGE"])).Should().BeEquivalentTo(
+            [new[] { "second" }, ["third", "fourth"]],
+            o => o.WithStrictOrdering());
+        batches.First().Single().Priority.Should().Be(4);
+    }
+}
+
 [Trait("Category", "Integration")]
 public class JournalService_GetPriorityHistogram_SystemJournal
 {

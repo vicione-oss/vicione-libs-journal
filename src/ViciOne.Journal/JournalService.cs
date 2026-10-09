@@ -182,6 +182,10 @@ public sealed class JournalService : IJournalService
     public Task<IJournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default)
         => OpenSession<IJournalFollowSession>(release => new JournalFollowSession(_openJournal, interval, release, _systemdLogger), cancellation);
 
+    /// <exception cref="JournalBusyException">Thrown when <see cref="JournalOptions.MaxSessions"/> sessions are open.</exception>
+    public Task<IJournalRecordFollowSession> CreateFollower(TimeSpan interval, JournalFieldSet fields, CancellationToken cancellation = default)
+        => OpenSession<IJournalRecordFollowSession>(release => new JournalRecordFollowSession(_openJournal, interval, fields, release, _systemdLogger), cancellation);
+
     public void Dispose()
     {
         _sessions.Dispose();

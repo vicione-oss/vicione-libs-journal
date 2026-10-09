@@ -4,6 +4,13 @@ namespace ViciOne.Journal;
 public interface IJournalService : IDisposable
 {
     Task<IJournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default);
+
+    /// <summary>
+    /// Follows new entries, reading only the given fields and delivering one batch per <paramref name="interval"/>.
+    /// </summary>
+    Task<IJournalRecordFollowSession> CreateFollower(TimeSpan interval, JournalFieldSet fields, CancellationToken cancellation = default)
+        => throw new NotSupportedException();
+
     Task<IJournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default);
     IReadOnlyDictionary<string, string> GetFieldDescriptions();
     Task<IReadOnlyCollection<string>> GetFields(CancellationToken cancellationToken = default);

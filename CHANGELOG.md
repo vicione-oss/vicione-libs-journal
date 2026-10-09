@@ -8,6 +8,7 @@
 - `IJournalService.GetPriorityHistogram` counts entries per time bucket, priority and systemd unit in one pass, with uniform buckets or explicit bucket edges
 - `JournalOptions.MaxSessions` and `JournalOptions.MaxConcurrentQueries` limit open sessions and running queries separately
 - `IJournalGenericSession.GetRecords` reads only the fields of a `JournalFieldSet`, with the timestamp as `DateTimeOffset`, the cursor and the priority, into a `JournalRecord`
+- `IJournalService.CreateFollower(interval, fields)` follows new entries as `JournalRecord` batches, one per interval
 
 ### Fixed
 

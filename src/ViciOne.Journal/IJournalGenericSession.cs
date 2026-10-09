@@ -9,4 +9,7 @@ public interface IJournalGenericSession : IDisposable
     void SeekRealTime(DateTime timestamp);
     void SeekTail();
     void SetFilter(string filter);
+
+    void SeekRealTime(DateTimeOffset timestamp)
+        => SeekRealTime(timestamp.UtcDateTime);
 }

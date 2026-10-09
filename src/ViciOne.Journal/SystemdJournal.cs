@@ -345,22 +345,14 @@ internal sealed partial class SystemdJournal : ISystemdJournal
     /// Seeks to the specified timestamp in the journal.
     /// </summary>
     /// <param name="time">The timestamp to seek to.</param>
-    /// <exception cref="ArgumentException">Thrown when the timestamp is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when the timestamp is before 1970.</exception>
     /// <exception cref="JournalException">Thrown when seeking fails.</exception>
-    /// <remarks>
-    /// The timestamp must be in UTC and not before 1970.
-    /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public void SeekRealtime(DateTime time)
+    public void SeekRealtime(DateTimeOffset time)
     {
         _logger?.LogSeekRealtime(time);
 
-        var utcTime = ValidateAndConvertToUtc(time);
-        DateTime epoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        var usec = (ulong)((utcTime - epoch).TotalMilliseconds * 1000);
-        if (usec > (ulong)DateTime.MaxValue.Ticks)
-            throw new ArgumentException("The timestamp is too large and would cause an overflow.", nameof(time));
+        var usec = JournalTime.ToRealtimeUsec(time);
 
         lock (_syncLock)
         {

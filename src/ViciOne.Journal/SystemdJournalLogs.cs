@@ -35,7 +35,7 @@ internal static partial class SystemdJournalLogs
     public static partial void LogSeekTail(this ILogger<SystemdJournal> logger);
 
     [LoggerMessage(EventId = 10, Level = LogLevel.Debug, Message = "SeekRealtime called with time: {Time}")]
-    public static partial void LogSeekRealtime(this ILogger<SystemdJournal> logger, DateTime time);
+    public static partial void LogSeekRealtime(this ILogger<SystemdJournal> logger, DateTimeOffset time);
 
     [LoggerMessage(EventId = 11, Level = LogLevel.Debug, Message = "SeekCursor called with cursor: {Cursor}")]
     public static partial void LogSeekCursor(this ILogger<SystemdJournal> logger, string cursor);

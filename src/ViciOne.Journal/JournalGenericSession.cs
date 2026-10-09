@@ -65,7 +65,11 @@ public sealed class JournalGenericSession : IJournalGenericSession
         }
     }
 
+    /// <param name="timestamp">The time to seek to; <see cref="DateTimeKind.Unspecified"/> is read as local time.</param>
     public void SeekRealTime(DateTime timestamp)
+        => SeekRealTime(new DateTimeOffset(timestamp.ToUniversalTime()));
+
+    public void SeekRealTime(DateTimeOffset timestamp)
     {
         try
         {

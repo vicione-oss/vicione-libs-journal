@@ -2,10 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `IJournalGenericSession.SeekRealTime(DateTimeOffset)` seeks to an instant regardless of the device time zone
+
 ### Fixed
 
 - With `writeCustomKeyValues` enabled, log properties no longer overwrite `MESSAGE`, `PRIORITY` or `SYSLOG_STRUCTURED_DATA`, and no longer set fields that journald interprets (such as `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO` or `UNIT`). These properties are now written with a `PROP_` prefix, for example `PROP_MESSAGE`. Configured metadata fields are still written as-is
 - Fix filters ignoring a `+` that follows a term repeated from, or contained in, an earlier term
+- Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone
 
 ### Changed
 

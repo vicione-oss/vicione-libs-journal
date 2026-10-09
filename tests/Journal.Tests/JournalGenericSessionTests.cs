@@ -319,3 +319,16 @@ public sealed class JournalGenericSession_Dispose
         callbackInvoked.Should().BeTrue();
     }
 }
+
+public sealed class JournalGenericSession_SeekRealTime
+{
+    [Fact]
+    public void Reports_a_time_before_1970_as_a_seek_error_in_any_time_zone()
+    {
+        using var session = new JournalGenericSession(() => new FakeSystemdJournal([]), () => { });
+
+        var act = () => session.SeekRealTime(DateTime.MinValue);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("Error seeking journal realtime.");
+    }
+}

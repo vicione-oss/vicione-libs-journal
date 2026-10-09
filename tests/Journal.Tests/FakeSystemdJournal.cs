@@ -47,13 +47,12 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries) : ISyst
     public void SeekTail()
         => Seek(entries.Count, entries.Count - 1);
 
-    public void SeekRealtime(DateTime time)
+    public void SeekRealtime(DateTimeOffset time)
     {
-        var instant = time.Kind == DateTimeKind.Utc ? time : time.ToUniversalTime();
-        var firstAtOrAfter = entries.FindIndex(e => e.Timestamp.UtcDateTime >= instant);
-        var lastAtOrBefore = entries.FindLastIndex(e => e.Timestamp.UtcDateTime <= instant);
+        _ = JournalTime.ToRealtimeUsec(time);
+        var firstAtOrAfter = entries.FindIndex(e => e.Timestamp >= time);
 
-        Seek(firstAtOrAfter < 0 ? entries.Count : firstAtOrAfter, lastAtOrBefore);
+        Seek(firstAtOrAfter < 0 ? entries.Count : firstAtOrAfter, entries.FindLastIndex(e => e.Timestamp <= time));
     }
 
     public void SeekCursor(string cursor)

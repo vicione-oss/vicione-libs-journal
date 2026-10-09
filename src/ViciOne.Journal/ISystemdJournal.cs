@@ -12,7 +12,7 @@ internal interface ISystemdJournal : IDisposable
     void AddDisjunction();
     void SeekHead();
     void SeekTail();
-    void SeekRealtime(DateTime time);
+    void SeekRealtime(DateTimeOffset time);
     void SeekCursor(string cursor);
     bool Next();
     bool Previous();

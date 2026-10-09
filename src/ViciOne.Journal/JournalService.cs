@@ -55,8 +55,7 @@ public sealed class JournalService : IJournalService
 
             try
             {
-                // TODO: Use datetime offset in seek realtime
-                journal.SeekRealtime(since.DateTime);
+                journal.SeekRealtime(since);
             }
             catch (Exception ex)
             {
@@ -110,8 +109,7 @@ public sealed class JournalService : IJournalService
 
         try
         {
-            // TODO: Use datetime offset in seek realtime
-            journal.SeekRealtime(since.DateTime);
+            journal.SeekRealtime(since);
         }
         catch (Exception ex)
         {
@@ -168,10 +166,9 @@ public sealed class JournalService : IJournalService
                 throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
             }
 
-            // TODO: Use datetime offset
             try
             {
-                return journal.GetPriorityCountsSince(since.DateTime, cancellationToken);
+                return journal.GetPriorityCountsSince(since.UtcDateTime, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -194,10 +191,9 @@ public sealed class JournalService : IJournalService
                 throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
             }
 
-            // TODO: Use datetime offset
             try
             {
-                return journal.GetPriorityCountsBetween(start.DateTime, end.DateTime, cancellationToken);
+                return journal.GetPriorityCountsBetween(start.UtcDateTime, end.UtcDateTime, cancellationToken);
             }
             catch (Exception ex)
             {

@@ -40,13 +40,17 @@ public sealed class JournalService : IJournalService
             return journal.EnumerateUniqueFieldValues(field);
         }, cancellationToken);
 
-    /// <param name="order">desc or asc</param>
+    /// <param name="order">
+    /// <c>asc</c> or <c>desc</c>, in any case. Either way, the result holds the first <paramref name="limit"/>
+    /// entries from <paramref name="since"/>; <c>desc</c> returns them newest first.
+    /// </param>
     public async Task<IReadOnlyCollection<IReadOnlyDictionary<string, string>>> GetLogs(DateTimeOffset since, string order = "desc", int limit = 100, string? filter = null, CancellationToken cancellationToken = default)
         => await _accessControl.Run(() =>
         {
             if (limit < 0)
                 throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be a positiv value.");
-            if (order.ToUpperInvariant() is not "ASC" and not "DESC")
+            var descending = order.Equals("desc", StringComparison.OrdinalIgnoreCase);
+            if (!descending && !order.Equals("asc", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Order must be 'asc' or 'desc'.", nameof(order));
             if (since > DateTimeOffset.Now)
                 throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
@@ -78,14 +82,10 @@ public sealed class JournalService : IJournalService
                 List<IReadOnlyDictionary<string, string>> logs = new(limit);
 
                 while (logs.Count < limit && journal.Next())
-                {
-                    var entry = journal.GetCurrentEntry();
+                    logs.Add(journal.GetCurrentEntry());
 
-                    if (order == "desc")
-                        logs.Insert(0, entry);
-                    else
-                        logs.Add(entry);
-                }
+                if (descending)
+                    logs.Reverse();
 
                 return logs;
             }

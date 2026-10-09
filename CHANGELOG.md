@@ -11,10 +11,12 @@
 - With `writeCustomKeyValues` enabled, log properties no longer overwrite `MESSAGE`, `PRIORITY` or `SYSLOG_STRUCTURED_DATA`, and no longer set fields that journald interprets (such as `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO` or `UNIT`). These properties are now written with a `PROP_` prefix, for example `PROP_MESSAGE`. Configured metadata fields are still written as-is
 - Fix filters ignoring a `+` that follows a term repeated from, or contained in, an earlier term
 - Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone
+- Fix `GetLogs` returning ascending order for `DESC` or any other case than `desc`
 
 ### Changed
 
 - Serilog sink: when a metadata field and a log event property map to the same field name, the metadata field now takes precedence, as it already did in `JournalLogger`
+- Reverse `GetLogs` results for `desc` in linear instead of quadratic time
 
 ## 1.2.0 - 2026-04-10
 

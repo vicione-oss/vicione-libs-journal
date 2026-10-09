@@ -8,19 +8,26 @@ public sealed class JournalService : IJournalService
 {
     private readonly ILogger<SystemdJournal>? _systemdLogger;
     private readonly Func<ISystemdJournal> _openJournal;
-    private readonly AccessControl _accessControl = new(5);
+    private readonly AccessControl _sessions;
+    private readonly AccessControl _queries;
 
     public JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options)
+        : this(options.Value, options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null)
+    { }
+
+    private JournalService(JournalOptions options, ILogger<SystemdJournal>? logger)
+        : this(() => new SystemdJournal(logger, options.OpeningMode), options)
+        => _systemdLogger = logger;
+
+    internal JournalService(Func<ISystemdJournal> openJournal, JournalOptions? options = null)
     {
-        var logger = options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null;
-        var openingMode = options.Value.OpeningMode;
-
-        _systemdLogger = logger;
-        _openJournal = () => new SystemdJournal(logger, openingMode);
+        options ??= new();
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxSessions, 1, nameof(JournalOptions.MaxSessions));
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxConcurrentQueries, 1, nameof(JournalOptions.MaxConcurrentQueries));
+        _openJournal = openJournal;
+        _sessions = new(options.MaxSessions, $"Only {options.MaxSessions} journal sessions may be open at once.");
+        _queries = new(options.MaxConcurrentQueries, $"Only {options.MaxConcurrentQueries} journal queries may run at once.");
     }
-
-    internal JournalService(Func<ISystemdJournal> openJournal)
-        => _openJournal = openJournal;
 
     [SuppressMessage("Performance", "CA1822:Member als statisch markieren")]
     public IReadOnlyDictionary<string, string> GetFieldDescriptions()
@@ -163,22 +170,19 @@ public sealed class JournalService : IJournalService
         }, cancellationToken);
     }
 
-    [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht")]
-    public async Task<IJournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default)
-    {
-        var access = await _accessControl.Begin(cancellationToken);
-        return new JournalGenericSession(_openJournal, access.Dispose, _systemdLogger);
-    }
+    /// <exception cref="JournalBusyException">Thrown when <see cref="JournalOptions.MaxSessions"/> sessions are open.</exception>
+    public Task<IJournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default)
+        => OpenSession<IJournalGenericSession>(release => new JournalGenericSession(_openJournal, release, _systemdLogger), cancellationToken);
 
-    [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht")]
-    public async Task<IJournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default)
-    {
-        var access = await _accessControl.Begin(cancellation);
-        return new JournalFollowSession(_openJournal, interval, access.Dispose, _systemdLogger);
-    }
+    /// <exception cref="JournalBusyException">Thrown when <see cref="JournalOptions.MaxSessions"/> sessions are open.</exception>
+    public Task<IJournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default)
+        => OpenSession<IJournalFollowSession>(release => new JournalFollowSession(_openJournal, interval, release, _systemdLogger), cancellation);
 
     public void Dispose()
-        => _accessControl.Dispose();
+    {
+        _sessions.Dispose();
+        _queries.Dispose();
+    }
 
     private static void ApplyFilter(ISystemdJournal journal, string? filter)
     {
@@ -193,10 +197,27 @@ public sealed class JournalService : IJournalService
         }
     }
 
+    // Opening a journal and walking it block, so neither happens on the caller's thread.
     private Task<T> RunQuery<T>(Func<ISystemdJournal, T> query, CancellationToken cancellationToken)
-        => _accessControl.Run(() =>
+        => Task.Run(() => _queries.Run(() =>
         {
             using var journal = _openJournal();
             return query(journal);
+        }), cancellationToken);
+
+    [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht", Justification = "The session releases the slot when it is disposed.")]
+    private Task<T> OpenSession<T>(Func<Action, T> create, CancellationToken cancellationToken)
+        => Task.Run(() =>
+        {
+            var slot = _sessions.Acquire();
+            try
+            {
+                return create(slot.Dispose);
+            }
+            catch
+            {
+                slot.Dispose();
+                throw;
+            }
         }, cancellationToken);
 }

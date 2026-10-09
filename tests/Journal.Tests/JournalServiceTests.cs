@@ -325,6 +325,62 @@ public class JournalService_GetPriorityHistogram
     }
 }
 
+public class JournalService_ctor
+{
+    [Theory]
+    [InlineData(0, 1, nameof(JournalOptions.MaxSessions))]
+    [InlineData(1, 0, nameof(JournalOptions.MaxConcurrentQueries))]
+    public void Rejects_a_limit_below_one(int maxSessions, int maxConcurrentQueries, string option)
+    {
+        var act = () => new JournalService(() => new FakeSystemdJournal([]), new JournalOptions { MaxSessions = maxSessions, MaxConcurrentQueries = maxConcurrentQueries });
+
+        act.Should().Throw<ArgumentOutOfRangeException>().WithParameterName(option);
+    }
+}
+
+public class JournalService_CreateGeneric
+{
+    private readonly List<FakeJournalEntry> _entries = [];
+
+    [Fact]
+    public async Task Throws_a_busy_exception_when_the_session_limit_is_reached_Async()
+    {
+        using var service = new JournalService(() => new FakeSystemdJournal(_entries), new JournalOptions { MaxSessions = 1 });
+        using var session = await service.CreateGeneric(TestContext.Current.CancellationToken);
+
+        var act = () => service.CreateGeneric(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<JournalBusyException>();
+    }
+
+    [Fact]
+    public async Task Releases_the_slot_when_the_journal_cannot_be_opened_Async()
+    {
+        var failToOpen = true;
+        using var service = new JournalService(
+            () => failToOpen ? throw new JournalException("open failed", -2) : new FakeSystemdJournal(_entries),
+            new JournalOptions { MaxSessions = 1 });
+        var failing = () => service.CreateGeneric(TestContext.Current.CancellationToken);
+        await failing.Should().ThrowAsync<JournalException>();
+        failToOpen = false;
+
+        using var session = await service.CreateGeneric(TestContext.Current.CancellationToken);
+
+        session.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Leaves_the_query_slots_to_queries_Async()
+    {
+        using var service = new JournalService(() => new FakeSystemdJournal(_entries), new JournalOptions { MaxSessions = 1 });
+        using var session = await service.CreateGeneric(TestContext.Current.CancellationToken);
+
+        var fields = await service.GetFields(TestContext.Current.CancellationToken);
+
+        fields.Should().BeEmpty();
+    }
+}
+
 public class JournalService_CreateFollower
 {
     [Fact]

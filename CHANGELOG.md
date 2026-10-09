@@ -6,6 +6,7 @@
 
 - `IJournalGenericSession.SeekRealTime(DateTimeOffset)` seeks to an instant regardless of the device time zone
 - `IJournalService.GetPriorityHistogram` counts entries per time bucket, priority and systemd unit in one pass, with uniform buckets or explicit bucket edges
+- `JournalOptions.MaxSessions` and `JournalOptions.MaxConcurrentQueries` limit open sessions and running queries separately
 
 ### Fixed
 
@@ -19,6 +20,9 @@
 - Fix `SetFilter` on generic and follow sessions combining the new filter with the previous one instead of replacing it
 - Fix follow sessions raising `Error` when they are stopped or disposed while reading new entries
 - Fix `GetPriorityCounts(start, end)` throwing `KeyNotFoundException` for any interval that contains entries
+- Fix a session that failed to open keeping its slot
+- Fix disposing a session twice releasing two slots
+- Fix a caller waiting indefinitely instead of failing when it raced another caller for the last slot
 
 ### Changed
 
@@ -26,6 +30,9 @@
 - Reverse `GetLogs` results for `desc` in linear instead of quadratic time
 - Count `GetPriorityCounts` without allocating per entry
 - `GetPriorityCounts` throws `OperationCanceledException` when cancelled and `ArgumentOutOfRangeException` for a `since` in the future, instead of `InvalidOperationException`
+- Open sessions no longer use up the slots of one-shot queries such as `GetLogs`
+- Throw `JournalBusyException`, an `InvalidOperationException`, when a limit is reached
+- Run one-shot queries and session creation off the caller's thread
 
 ## 1.2.0 - 2026-04-10
 

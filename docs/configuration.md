@@ -20,6 +20,10 @@ This document provides a complete reference for all configuration options availa
 | --------------- | -------------------- | ----------- | ---------------------------------------------------------- |
 | `OpeningMode`   | `JournalOpeningMode` | `LocalOnly` | Specifies which journal files to open                      |
 | `EnableLogging` | `bool`               | `false`     | Enables internal diagnostic logging for journal operations |
+| `MaxSessions`   | `int`                | `5`         | Generic and follow sessions that may be open at once       |
+| `MaxConcurrentQueries` | `int`         | `4`         | One-shot queries (`GetLogs`, `GetPriorityHistogram`, ...) that may run at once |
+
+When a limit is reached, the call fails at once with a `JournalBusyException` (an `InvalidOperationException`) instead of waiting. Sessions and queries have separate limits, so open sessions never block a query.
 
 ### JournalOpeningMode Enum
 

@@ -107,6 +107,7 @@ internal sealed partial class SystemdJournal : ISystemdJournal
 
     // For automatic reinitialization.
     private readonly JournalOpeningMode _journalOpeningMode;
+    private readonly string? _directory;
     private int _nativeErrorCount;
 
     /// <summary>
@@ -134,18 +135,20 @@ internal sealed partial class SystemdJournal : ISystemdJournal
     /// Initializes a new instance of the <see cref="SystemdJournal"/> class with the specified flags.
     /// </summary>
     /// <param name="flags">Flags controlling which journal to open (default is LocalOnly).</param>
+    /// <param name="directory">A directory whose journal files to open instead; <paramref name="flags"/> do not apply to it.</param>
     /// <exception cref="ArgumentException">Thrown when an invalid flag is provided.</exception>
     /// <exception cref="JournalException">Thrown when opening the journal fails.</exception>
-    internal SystemdJournal(ILogger<SystemdJournal>? logger = null, JournalOpeningMode flags = JournalOpeningMode.LocalOnly)
+    internal SystemdJournal(ILogger<SystemdJournal>? logger = null, JournalOpeningMode flags = JournalOpeningMode.LocalOnly, string? directory = null)
     {
         _logger = logger;
         _journalOpeningMode = flags;
+        _directory = directory;
 
         // Ensure that the provided flags are valid.
         if (!Enum.IsDefined(flags))
             throw new ArgumentException("Invalid JournalFlags value.", nameof(flags));
 
-        var ret = NativeMethods.sd_journal_open(out var handle, (int)flags);
+        var ret = Open(out var handle);
 
         if (ret < 0 || handle == IntPtr.Zero)
             throw new JournalException($"sd_journal_open failed with error {ret}", ret);
@@ -203,7 +206,7 @@ internal sealed partial class SystemdJournal : ISystemdJournal
             }
         }
 
-        var ret = NativeMethods.sd_journal_open(out var newHandle, (int)_journalOpeningMode);
+        var ret = Open(out var newHandle);
         if (ret < 0 || newHandle == IntPtr.Zero)
         {
             _logger?.LogFailedReinitializeJournal(ret);
@@ -213,6 +216,11 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         _journalHandle = new(newHandle);
         _logger?.LogJournalReinitialized();
     }
+
+    private int Open(out IntPtr handle)
+        => _directory is null
+            ? NativeMethods.sd_journal_open(out handle, (int)_journalOpeningMode)
+            : NativeMethods.sd_journal_open_directory(out handle, _directory, 0);
 
     /// <summary>
     /// Adds a match to the journal query. The match must be in the format 'FIELD=VALUE'.

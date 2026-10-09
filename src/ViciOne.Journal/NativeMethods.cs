@@ -12,6 +12,9 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_open(out IntPtr journal, int flags);
 
+    [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int sd_journal_open_directory(out IntPtr journal, string path, int flags);
+
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial void sd_journal_close(IntPtr journal);
 

@@ -1,4 +1,4 @@
-# Configuration Reference
+﻿# Configuration Reference
 
 This document provides a complete reference for all configuration options available in ViciOne.Journal.
 
@@ -20,6 +20,7 @@ This document provides a complete reference for all configuration options availa
 | --------------- | -------------------- | ----------- | ---------------------------------------------------------- |
 | `OpeningMode`   | `JournalOpeningMode` | `LocalOnly` | Specifies which journal files to open                      |
 | `EnableLogging` | `bool`               | `false`     | Enables internal diagnostic logging for journal operations |
+| `Directory`     | `string?`            | `null`      | Reads the journal files of this directory instead, such as a copy from another device; `OpeningMode` does not apply |
 | `MaxSessions`   | `int`                | `5`         | Generic and follow sessions that may be open at once       |
 | `MaxConcurrentQueries` | `int`         | `4`         | One-shot queries (`GetLogs`, `GetPriorityHistogram`, ...) that may run at once; each keeps its journal open for the next query |
 

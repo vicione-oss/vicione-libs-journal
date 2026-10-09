@@ -16,7 +16,7 @@ public sealed class JournalService : IJournalService
     { }
 
     private JournalService(JournalOptions options, ILogger<SystemdJournal>? logger)
-        : this(() => new SystemdJournal(logger, options.OpeningMode), options, logger)
+        : this(() => new SystemdJournal(logger, options.OpeningMode, options.Directory), options, logger)
     { }
 
     internal JournalService(Func<ISystemdJournal> openJournal, JournalOptions? options = null, ILogger<SystemdJournal>? logger = null)

@@ -11,6 +11,7 @@
 - `IJournalService.CreateFollower(interval, fields)` follows new entries as `JournalRecord` batches, one per interval
 - `IJournalService.ReadPage` reads `JournalRecord`s older or newer than a cursor or a time without holding a session
 - `IJournalService.GetTimeRange` returns the times of the oldest and the newest entry still in the journal
+- `JournalOptions.Directory` reads the journal files of a directory, such as a copy from another device
 
 ### Fixed
 

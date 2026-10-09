@@ -15,6 +15,9 @@ internal interface ISystemdJournal : IDisposable
     void SeekTail();
     void SeekRealtime(DateTimeOffset time);
     void SeekCursor(string cursor);
+
+    /// <returns>Whether the current entry is the one the cursor identifies.</returns>
+    bool TestCursor(string cursor);
     bool Next();
     bool Previous();
     Dictionary<string, string> GetCurrentEntry();

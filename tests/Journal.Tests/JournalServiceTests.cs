@@ -466,6 +466,130 @@ public class JournalService_CreateFollower_Records
     }
 }
 
+public class JournalService_ReadPage
+{
+    private static readonly DateTimeOffset s_start = new(2026, 4, 1, 9, 0, 0, TimeSpan.Zero);
+    private static readonly JournalFieldSet s_fields = new("MESSAGE");
+
+    private readonly List<FakeJournalEntry> _entries =
+    [
+        FakeJournalEntry.At(s_start, "MESSAGE=1", "_SYSTEMD_UNIT=a.service"),
+        FakeJournalEntry.At(s_start.AddSeconds(1), "MESSAGE=2", "_SYSTEMD_UNIT=b.service"),
+        FakeJournalEntry.At(s_start.AddSeconds(2), "MESSAGE=3", "_SYSTEMD_UNIT=a.service"),
+        FakeJournalEntry.At(s_start.AddSeconds(2), "MESSAGE=4", "_SYSTEMD_UNIT=b.service"),
+        FakeJournalEntry.At(s_start.AddSeconds(3), "MESSAGE=5", "_SYSTEMD_UNIT=a.service"),
+    ];
+
+    private async Task<JournalPage> ReadPageAsync(JournalPageRequest request)
+    {
+        using var service = new JournalService(() => new FakeSystemdJournal(_entries));
+        return await service.ReadPage(request, TestContext.Current.CancellationToken);
+    }
+
+    private static IEnumerable<string?> Messages(JournalPage page)
+        => page.Records.Select(r => r["MESSAGE"]);
+
+    [Fact]
+    public async Task Reads_the_newest_entries_oldest_first_by_default_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Count = 2 });
+
+        Messages(page).Should().Equal("4", "5");
+        page.HasMore.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reads_the_oldest_entries_when_reading_newer_without_an_anchor_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Count = 2, Direction = JournalDirection.Newer });
+
+        Messages(page).Should().Equal("1", "2");
+    }
+
+    [Fact]
+    public async Task Reads_the_entries_older_than_a_cursor_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Count = 2, Cursor = _entries[3].Cursor });
+
+        Messages(page).Should().Equal("2", "3");
+        page.HasMore.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reads_the_entries_newer_than_a_cursor_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Count = 10, Direction = JournalDirection.Newer, Cursor = _entries[2].Cursor });
+
+        Messages(page).Should().Equal("4", "5");
+        page.HasMore.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(JournalDirection.Older, new[] { "1", "2" })]
+    [InlineData(JournalDirection.Newer, new[] { "4", "5" })]
+    public async Task Starts_next_to_a_cursor_whose_entry_is_gone_Async(JournalDirection direction, string[] expected)
+    {
+        var cursor = _entries[2].Cursor;
+        _entries.RemoveAt(2);
+
+        var page = await ReadPageAsync(new(s_fields) { Count = 2, Direction = direction, Cursor = cursor });
+
+        Messages(page).Should().Equal(expected);
+    }
+
+    [Fact]
+    public async Task Reads_the_entries_at_or_after_a_time_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Direction = JournalDirection.Newer, Time = s_start.AddSeconds(2) });
+
+        Messages(page).Should().Equal("3", "4", "5");
+    }
+
+    [Fact]
+    public async Task Reads_the_entries_before_a_time_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Time = s_start.AddSeconds(2) });
+
+        Messages(page).Should().Equal("1", "2");
+        page.HasMore.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Reads_only_entries_matching_the_filter_Async()
+    {
+        var page = await ReadPageAsync(new(s_fields) { Filter = "_SYSTEMD_UNIT=b.service" });
+
+        Messages(page).Should().Equal("2", "4");
+    }
+
+    [Fact]
+    public async Task Throws_OperationCanceledException_when_cancelled_while_reading_Async()
+    {
+        using CancellationTokenSource cancellation = new();
+        using var service = new JournalService(() => new FakeSystemdJournal(_entries) { Stepped = cancellation.Cancel });
+
+        var act = () => service.ReadPage(new(s_fields), cancellation.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Rejects_a_time_before_1970_Async()
+    {
+        var act = () => ReadPageAsync(new(s_fields) { Time = DateTimeOffset.UnixEpoch.AddDays(-1) });
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task Rejects_a_cursor_and_a_time_together_Async()
+    {
+        var act = () => ReadPageAsync(new(s_fields) { Cursor = _entries[0].Cursor, Time = s_start });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+}
+
 [Trait("Category", "Integration")]
 public class JournalService_GetPriorityHistogram_SystemJournal
 {
@@ -491,5 +615,31 @@ public class JournalService_GetPriorityHistogram_SystemJournal
             .ToDictionary(c => c.Key, c => c.Count);
 
         actual.Should().NotBeEmpty().And.Equal(expected);
+    }
+}
+
+[Trait("Category", "Integration")]
+public class JournalService_ReadPage_SystemJournal
+{
+    [Fact]
+    public async Task Pages_backwards_without_gaps_or_duplicates_Async()
+    {
+        JournalFieldSet fields = new("MESSAGE");
+        using var service = new JournalService(NullLoggerFactory.Instance, Options.Create(new JournalOptions()));
+        var time = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var whole = await service.ReadPage(new(fields) { Count = 300, Time = time }, TestContext.Current.CancellationToken);
+
+        List<JournalRecord> paged = [];
+        JournalPage page = new([], HasMore: true);
+        while (paged.Count < whole.Records.Count && page.HasMore)
+        {
+            var request = paged.Count == 0
+                ? new JournalPageRequest(fields) { Count = 50, Time = time }
+                : new JournalPageRequest(fields) { Count = 50, Cursor = paged[0].Cursor };
+            page = await service.ReadPage(request, TestContext.Current.CancellationToken);
+            paged.InsertRange(0, page.Records);
+        }
+
+        paged.Select(r => r.Cursor).Should().Equal(whole.Records.Select(r => r.Cursor));
     }
 }

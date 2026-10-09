@@ -89,54 +89,6 @@ public sealed class JournalService : IJournalService
         }, cancellationToken);
     }
 
-    // TODO: proof if needed
-    internal IReadOnlyCollection<IReadOnlyDictionary<string, string>> GetLogs(DateTimeOffset since, int pageSize, int pageNumber, string? filter = null)
-    {
-        if (since > DateTimeOffset.Now)
-            throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
-        if (pageNumber < 1)
-            throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number must be greater than 0.");
-        if (pageSize < 1)
-            throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0.");
-
-        using var journal = _openJournal();
-
-        try
-        {
-            journal.SeekRealtime(since);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Error setting journal pointer to {since}.", ex);
-        }
-
-        ApplyFilter(journal, filter);
-
-        try
-        {
-            List<IReadOnlyDictionary<string, string>> logs = new(pageSize);
-            var skip = (pageNumber - 1) * pageSize;
-
-            while (journal.Next())
-            {
-                if (skip > 0)
-                {
-                    skip--;
-                    continue;
-                }
-
-                var entry = journal.GetCurrentEntry();
-                logs.Insert(0, entry);
-            }
-
-            return logs;
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Error reading journal entries.", ex);
-        }
-    }
-
     public async Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset since, string? filter = null, CancellationToken cancellationToken = default)
     {
         if (since > DateTimeOffset.Now)
@@ -170,6 +122,25 @@ public sealed class JournalService : IJournalService
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 throw new InvalidOperationException("Error reading priority counts.", ex);
+            }
+        }, cancellationToken);
+    }
+
+    public async Task<JournalPage> ReadPage(JournalPageRequest request, CancellationToken cancellationToken = default)
+    {
+        JournalPageReader.Validate(request);
+
+        return await RunQuery(journal =>
+        {
+            ApplyFilter(journal, request.Filter);
+
+            try
+            {
+                return JournalPageReader.Read(journal, request, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException("Error reading journal entries.", ex);
             }
         }, cancellationToken);
     }

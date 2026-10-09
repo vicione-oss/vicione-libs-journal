@@ -55,6 +55,9 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     internal static partial int sd_journal_seek_cursor(IntPtr journal, string cursor);
 
+    [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int sd_journal_test_cursor(IntPtr journal, string cursor);
+
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_wait(IntPtr journal, ulong timeout);
 

@@ -20,6 +20,12 @@ public interface IJournalService : IDisposable
     Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset start, DateTimeOffset end, string? filter = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Reads one page of entries before or after a cursor or a time, without holding a session.
+    /// </summary>
+    Task<JournalPage> ReadPage(JournalPageRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    /// <summary>
     /// Counts the entries per bucket, priority and group in one pass over the range.
     /// </summary>
     /// <param name="bucketSize">The width of each bucket; the last bucket ends at <paramref name="end"/> and may be shorter.</param>

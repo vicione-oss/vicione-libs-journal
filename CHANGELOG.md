@@ -9,6 +9,7 @@
 - `JournalOptions.MaxSessions` and `JournalOptions.MaxConcurrentQueries` limit open sessions and running queries separately
 - `IJournalGenericSession.GetRecords` reads only the fields of a `JournalFieldSet`, with the timestamp as `DateTimeOffset`, the cursor and the priority, into a `JournalRecord`
 - `IJournalService.CreateFollower(interval, fields)` follows new entries as `JournalRecord` batches, one per interval
+- `IJournalService.ReadPage` reads `JournalRecord`s older or newer than a cursor or a time without holding a session
 
 ### Fixed
 

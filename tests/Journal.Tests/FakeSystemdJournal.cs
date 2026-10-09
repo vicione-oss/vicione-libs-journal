@@ -81,6 +81,9 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
         Seek(firstAtOrAfter < 0 ? entries.Count : firstAtOrAfter, entries.FindLastIndex(e => e.Sequence <= sequence));
     }
 
+    public bool TestCursor(string cursor)
+        => _current is { } index && entries[index].Cursor == cursor;
+
     public bool Next()
     {
         for (var i = _nextCandidate; i < entries.Count; i++)

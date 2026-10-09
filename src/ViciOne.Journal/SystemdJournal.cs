@@ -400,6 +400,16 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         }
     }
 
+    public bool TestCursor(string cursor)
+    {
+        lock (_syncLock)
+        {
+            var ret = SafeNativeCall(handle => NativeMethods.sd_journal_test_cursor(handle, cursor));
+            CheckNativeResult(ret, "sd_journal_test_cursor");
+            return ret > 0;
+        }
+    }
+
     /// <summary>
     /// Advances to the next journal entry.
     /// </summary>

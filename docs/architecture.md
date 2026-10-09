@@ -81,7 +81,7 @@ A `SafeJournalHandle` ensures proper cleanup of native resources.
 
 ## Memory Management
 
-Most journal API functions return pointers to internal buffers that should **not** be freed. The exception is `sd_journal_enumerate_unique`, which returns malloc'd memory that must be freed.
+Most journal API functions return pointers into the journal's own memory, valid only until the next call on the same journal, that must **not** be freed. The exception is `sd_journal_get_cursor`, which returns a string allocated with `malloc()` that the caller frees.
 
 ## Logging Pipeline
 

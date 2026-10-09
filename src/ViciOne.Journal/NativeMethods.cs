@@ -86,7 +86,7 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_enumerate_unique(IntPtr journal, out IntPtr data, out UIntPtr length);
 
-    // Import free() from libc for freeing pointers (e.g. in GetCursor and EnumerateUniqueFieldValues).
+    // Frees the cursor string that sd_journal_get_cursor allocates.
     [LibraryImport(LIBC_LIB, SetLastError = false)]
     internal static partial void free(IntPtr ptr);
 

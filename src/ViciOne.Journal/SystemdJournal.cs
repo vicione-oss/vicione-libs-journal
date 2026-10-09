@@ -4,11 +4,6 @@
 // Please ensure that instances of SystemdJournal (e.g., in JournalFieldsProvider and JournalFieldValuesProvider)
 // are always used within a using block or explicitly call Dispose().
 //
-// Conditional Compilation for GetCursor:
-// To test the correct variant of memory release, you can define the preprocessor symbol FREE_CURSOR
-// (e.g., in the project properties or with #define FREE_CURSOR at the beginning of the file). This allows you to
-// choose between the variants (with and without manual release).
-//
 // Journald Reinitialization:
 // In case of repeated (two consecutive) errors when calling native functions, an attempt is automatically made
 // to re-establish the connection to journald. In this case, a JournalException is thrown, indicating in its message
@@ -20,68 +15,12 @@
 // Ensure that Seri_logger is initialized (e.g., in your program startup) so that the _logger entries actually appear
 // in the desired output.
 
-// Memory Settings
+// Memory ownership (see sd-journal(3))
 //
-// **sd_journal_get_cursor (Flag: `FREE_CURSOR`):**
-// The documentation (and the source code of systemd) indicate that the pointer returned by `sd_journal_get_cursor`
-// points to an internal buffer. This buffer remains valid until the next journal call and should not be freed by 
-// the user.
-// 
-// **Setting:**
-// FREE_CURSOR = false` is correct.
-//
-// **sd_journal_enumerate_data (Flag: `FREE_ENUMERATE_DATA`)**
-// Again, this is a pointer to an internal buffer that is provided during the iteration over an entry's data. User
-// deallocation is not intended.
-//
-// **Setting:**
-// FREE_ENUMERATE_DATA = false` is correct.
-//
-// **sd_journal_get_data (Flag: `FREE_JOURNAL_GET_DATA`)**
-// The function `sd_journal_get_data` returns a pointer to internally managed data. There is no requirement to free
-// this pointer, as it is not allocated via `malloc()`.
-//
-// **Setting:**
-// FREE_JOURNAL_GET_DATA = false` is correct.
-//
-// **sd_journal_enumerate_available_fields (Flag: `FREE_AVAILABLE_FIELDS`)**
-// Similar to the other data query routines, the pointer returned by `sd_journal_enumerate_available_fields` points 
-// to internal memory and should not be freed.
-//
-// **Setting:**
-// FREE_AVAILABLE_FIELDS = false` is correct.
-//
-// **sd_journal_enumerate_unique (Flag: `FREE_UNIQUE_DATA`)**
-// Here, the behavior differs: In some systemd versions (and based on discussions in the community as well as 
-// implementations in other bindings, such as Go projects), the return value of `sd_journal_enumerate_unique` is 
-// indeed allocated with `malloc()`. This means that the caller—once they have copied the value into safe, managed
-// memory—must free this memory using `free()` to avoid memory leaks.
-//
-// **Setting:**
-// FREE_UNIQUE_DATA = true is appropriate.
-//
-//
-// Summary
-//
-// - **FREE_CURSOR = false**:  
-//   The cursor pointer belongs to the library and not to the user.
-// 
-// - **FREE_ENUMERATE_DATA = false**:  
-//   The data pointers from entry enumeration point to internal memory.
-// 
-// - **FREE_JOURNAL_GET_DATA = false**:  
-//   This also uses internal memory that does not need to be freed.
-// 
-// - **FREE_AVAILABLE_FIELDS = false**:  
-//   The available field names reside in an internal memory area and should not be freed.
-// 
-// - **FREE_UNIQUE_DATA = true**:  
-//   The pointers returned by `sd_journal_enumerate_unique` are (at least in common implementations) allocated using `malloc()` and must be freed by the caller using `free()`.
-// #define FREE_CURSOR
-// #define FREE_ENUMERATE_DATA
-// #define FREE_JOURNAL_GET_DATA
-// #define FREE_AVAILABLE_FIELDS
-// #define FREE_UNIQUE_DATA
+// sd_journal_get_cursor() returns a string allocated with malloc(), which the caller frees.
+// The data of sd_journal_get_data(), sd_journal_enumerate_data(), sd_journal_enumerate_fields() and
+// sd_journal_enumerate_unique() points into the journal's own memory: it is valid only until the next call
+// on the same journal and must not be freed.
 
 using System.Runtime.InteropServices;
 using System.Text;

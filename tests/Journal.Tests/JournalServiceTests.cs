@@ -93,4 +93,25 @@ public class JournalService_CreateFollower
         message.Should().Be("after rotation");
         await follower.Stop();
     }
+
+    [Fact]
+    public async Task Delivers_the_requested_number_of_recent_entries_on_start_Async()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(1), "MESSAGE=first"),
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(2), "MESSAGE=second"),
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(3), "MESSAGE=third"),
+        ];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries));
+        using var follower = await service.CreateFollower(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        ConcurrentQueue<string> messages = [];
+        follower.NewEntry += entry => messages.Enqueue(entry["MESSAGE"]);
+
+        follower.Start(2);
+        await Task.Delay(TimeSpan.FromMilliseconds(750), TestContext.Current.CancellationToken);
+        await follower.Stop();
+
+        messages.Should().Equal("second", "third");
+    }
 }

@@ -228,8 +228,7 @@ internal sealed partial class SystemdJournal : ISystemdJournal
     /// <exception cref="JournalException"></exception>
     /// <remarks>
     /// The field name must consist of uppercase letters, digits, and underscores.
-    /// The value can be anything.
-    /// If the value contains spaces, it must be enclosed in quotes.
+    /// The value is matched exactly; one pair of surrounding double quotes is removed.
     /// </remarks>
     public void AddMatch(string match)
     {
@@ -262,13 +261,13 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         if (!FieldRegex().IsMatch(field))
             throw new ArgumentException($"Invalid field format: {field}. Only uppercase letters, digits, and underscores are allowed.", nameof(match));
 
-        // If the value contains spaces, it must be enclosed in quotes.
-        if (value.Contains(' ', StringComparison.Ordinal) && !(value.StartsWith('"') && value.EndsWith('"')))
-            throw new ArgumentException("Values containing spaces must be enclosed in quotes.", nameof(match));
+        // sd-journal compares the value byte by byte, so the quotes would otherwise have to be part of the entry.
+        if (value.Length >= 2 && value.StartsWith('"') && value.EndsWith('"'))
+            value = value[1..^1];
 
         lock (_syncLock)
         {
-            var matchBytes = Encoding.UTF8.GetBytes(match + "\0");
+            var matchBytes = Encoding.UTF8.GetBytes($"{field}={value}\0");
             var ret = SafeNativeCall(
                 handle => NativeMethods.sd_journal_add_match(
                     handle,
@@ -303,8 +302,7 @@ internal sealed partial class SystemdJournal : ISystemdJournal
     /// <exception cref="JournalException">Thrown when adding the match fails.</exception>
     /// <remarks>
     /// The field name must consist of uppercase letters, digits, and underscores.
-    /// The value can be anything.
-    /// If the value contains spaces, it must be enclosed in quotes.
+    /// The value is matched exactly; one pair of surrounding double quotes is removed.
     /// </remarks>
     public void AddMatch(string field, string value)
         => AddMatch($"{field}={value}");

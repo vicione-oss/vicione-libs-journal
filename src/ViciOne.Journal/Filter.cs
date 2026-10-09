@@ -8,7 +8,7 @@ internal static class Filter
     /// <param name="filter">
     /// Matches in the form <c>FIELD=value</c>: <c>,</c> joins matches into one group and <c>+</c> starts
     /// the next group. sd-journal ORs the groups, and within a group ORs matches on the same field
-    /// and ANDs different fields.
+    /// and ANDs different fields. Both separators also split quoted values.
     /// </param>
     internal static void Apply(string filter, Action<string> addMatch, Action addDisjunction)
     {

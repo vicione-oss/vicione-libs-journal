@@ -31,7 +31,8 @@ FIELD=value
 
 1. Field names must match the regex pattern: `^[A-Z0-9_]+$`
 2. Field names cannot start with `_` when adding custom fields (underscore prefix is reserved for trusted journal fields)
-3. Values containing spaces must be enclosed in quotes
+3. Values are matched exactly; surrounding double quotes are optional and removed
+4. `,` and `+` always separate matches, even inside quotes, so a value cannot contain them
 4. Filters are case-sensitive
 
 ---
@@ -61,7 +62,8 @@ var logs = await journalService.GetLogs(
 
 ### Values with Spaces
 
-Enclose values containing spaces in quotes:
+Values may contain spaces. Surrounding double quotes are optional, but they do not protect `,` or `+`: both
+always separate matches, so a value cannot contain them.
 
 ```csharp
 var logs = await journalService.GetLogs(

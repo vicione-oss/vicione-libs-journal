@@ -12,6 +12,7 @@
 - Fix filters ignoring a `+` that follows a term repeated from, or contained in, an earlier term
 - Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone
 - Fix `GetLogs` returning ascending order for `DESC` or any other case than `desc`
+- Fix filter values in double quotes never matching; the quotes are removed and no longer required for values with spaces
 
 ### Changed
 

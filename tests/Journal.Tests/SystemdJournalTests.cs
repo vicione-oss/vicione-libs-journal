@@ -22,3 +22,35 @@ public class SystemdJournal_FieldRegex
     public void Does_not_match_unallowed_field_names(string fieldName)
         => SystemdJournal.FieldRegex().Match(fieldName).Success.Should().BeFalse();
 }
+
+[Trait("Category", "Integration")]
+public class SystemdJournal_AddMatch
+{
+    [Fact]
+    public void Matches_a_quoted_value_that_contains_spaces()
+    {
+        var message = FindRecentMessageWithSpace();
+        using var journal = new SystemdJournal();
+
+        journal.AddMatch($"MESSAGE=\"{message}\"");
+        journal.SeekTail();
+
+        journal.Previous().Should().BeTrue();
+        journal.GetCurrentEntry()["MESSAGE"].Should().Be(message);
+    }
+
+    private static string FindRecentMessageWithSpace()
+    {
+        using var journal = new SystemdJournal();
+        journal.SeekTail();
+
+        while (journal.Previous())
+        {
+            var message = journal.GetCurrentEntry().GetValueOrDefault("MESSAGE");
+            if (message is not null && message.Contains(' ', StringComparison.Ordinal) && !message.Contains('"', StringComparison.Ordinal))
+                return message;
+        }
+
+        throw new InvalidOperationException("The journal has no message with a space.");
+    }
+}

@@ -312,33 +312,15 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <summary>
     /// Seeks to the beginning of the journal.
     /// </summary>
-    /// <param name="timeout">
-    /// An optional timeout period to wait for the journal to become ready. The specified timeout is a <see cref="TimeSpan"/>
-    /// that is internally converted to microseconds. If the wait operation times out, a <see cref="JournalException"/> is thrown.
-    /// </param>
     /// <exception cref="JournalException">
-    /// Thrown if the underlying sd-journal_seek_head operation fails or if the operation times out.
+    /// Thrown if the underlying sd-journal_seek_head operation fails.
     /// </exception>
-    public void SeekHead(TimeSpan? timeout = null)
+    public void SeekHead()
     {
         _logger?.LogSeekHead();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                // Convert timeout to microseconds
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekHead operation timed out", -1);
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_seek_head);
             CheckNativeResult(ret, "sd_journal_seek_head");
         }
@@ -347,32 +329,13 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <summary>
     /// Seeks to the end of the journal.
     /// </summary>
-    /// <param name="timeout"></param>
     /// <exception cref="JournalException"></exception>
-    /// <remarks>
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
-    /// </remarks>
-    public void SeekTail(TimeSpan? timeout = null)
+    public void SeekTail()
     {
         _logger?.LogSeekTail();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekTail operation timed out", -1);
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_seek_tail);
             CheckNativeResult(ret, "sd_journal_seek_tail");
         }
@@ -382,17 +345,13 @@ internal sealed partial class SystemdJournal : IDisposable
     /// Seeks to the specified timestamp in the journal.
     /// </summary>
     /// <param name="time">The timestamp to seek to.</param>
-    /// <param name="timeout">The maximum time to wait for the operation to complete.</param>
     /// <exception cref="ArgumentException">Thrown when the timestamp is invalid.</exception>
     /// <exception cref="JournalException">Thrown when seeking fails.</exception>
     /// <remarks>
     /// The timestamp must be in UTC and not before 1970.
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
     /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public void SeekRealtime(DateTime time, TimeSpan? timeout = null)
+    public void SeekRealtime(DateTime time)
     {
         _logger?.LogSeekRealtime(time);
 
@@ -405,18 +364,6 @@ internal sealed partial class SystemdJournal : IDisposable
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekRealtime operation timed out", -1);
-            }
             var ret = SafeNativeCall(handle => NativeMethods.sd_journal_seek_realtime_usec(handle, usec));
             CheckNativeResult(ret, "sd_journal_seek_realtime_usec");
         }
@@ -426,7 +373,6 @@ internal sealed partial class SystemdJournal : IDisposable
     /// Seeks to the specified cursor in the journal.
     /// </summary>
     /// <param name="cursor">The cursor to seek to.</param>
-    /// <param name="timeout">The maximum time to wait for the operation to complete.</param>
     /// <exception cref="ArgumentException">Thrown when the cursor is invalid.</exception>
     /// <exception cref="JournalException">Thrown when seeking fails.</exception>
     /// <remarks>
@@ -434,12 +380,9 @@ internal sealed partial class SystemdJournal : IDisposable
     /// The cursor must not contain null characters.
     /// The cursor must not exceed 512 characters.
     /// The cursor must not contain special characters like '!@#$%^&*()[]{}<>'
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
     /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public void SeekCursor(string cursor, TimeSpan? timeout = null)
+    public void SeekCursor(string cursor)
     {
         _logger?.LogSeekCursor(cursor);
 
@@ -456,19 +399,6 @@ internal sealed partial class SystemdJournal : IDisposable
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekCursor operation timed out", -1);
-            }
-
             var ret = SafeNativeCall(handle => NativeMethods.sd_journal_seek_cursor(handle, cursor));
             CheckNativeResult(ret, "sd_journal_seek_cursor");
         }
@@ -477,49 +407,27 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <summary>
     /// Advances to the next journal entry.
     /// </summary>
-    /// <param name="timeout">The maximum time to wait for the operation to complete.</param>
     /// <returns>True if the operation was successful and the cursor was advanced; otherwise, false.</returns>
     /// <exception cref="JournalException">Thrown when advancing the cursor fails.</exception>
-    /// <remarks>
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
-    /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public bool Next(TimeSpan? timeout = null)
+    public bool Next()
     {
         _logger?.LogNextCalled();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, timeoutUsec));
-                if (waitRet == 0)
-                    return false;
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_next);
             CheckNativeResult(ret, "sd_journal_next");
             return ret > 0;
         }
     }
 
-    public bool Previous(TimeSpan? timeout = null)
+    public bool Previous()
     {
         _logger?.LogPreviousCalled();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, timeoutUsec));
-                if (waitRet == 0)
-                    return false;
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_previous);
             CheckNativeResult(ret, "sd_journal_previous");
             return ret > 0;

@@ -33,6 +33,12 @@ internal interface ISystemdJournal : IDisposable
     ulong GetRealtimeUsec();
 
     /// <summary>
+    /// Returns the times of the oldest and the newest entry of all journal files, ignoring matches.
+    /// </summary>
+    /// <returns><see langword="null"/> if the journal is empty.</returns>
+    JournalTimeRange? GetTimeRange();
+
+    /// <summary>
     /// Reads a field of the current entry without copying it.
     /// </summary>
     /// <param name="value">The value after <c>FIELD=</c>. It is only valid until the next call on this journal.</param>

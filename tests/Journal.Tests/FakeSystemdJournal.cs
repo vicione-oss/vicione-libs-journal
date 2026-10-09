@@ -134,6 +134,9 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
     public ulong GetRealtimeUsec()
         => (ulong)(CurrentEntry.Timestamp - DateTimeOffset.UnixEpoch).Ticks / 10;
 
+    public JournalTimeRange? GetTimeRange()
+        => entries.Count == 0 ? null : new(entries.Min(e => e.Timestamp), entries.Max(e => e.Timestamp));
+
     public void RestartData()
         => _dataIndex = 0;
 

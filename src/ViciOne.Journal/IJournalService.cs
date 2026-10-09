@@ -20,6 +20,13 @@ public interface IJournalService : IDisposable
     Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset start, DateTimeOffset end, string? filter = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the times of the oldest and the newest entry in the journal, regardless of any filter.
+    /// </summary>
+    /// <returns><see langword="null"/> if the journal is empty.</returns>
+    Task<JournalTimeRange?> GetTimeRange(CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    /// <summary>
     /// Reads one page of entries before or after a cursor or a time, without holding a session.
     /// </summary>
     Task<JournalPage> ReadPage(JournalPageRequest request, CancellationToken cancellationToken = default)

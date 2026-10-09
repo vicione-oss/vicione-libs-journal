@@ -590,6 +590,31 @@ public class JournalService_ReadPage
     }
 }
 
+public class JournalService_GetTimeRange
+{
+    [Fact]
+    public async Task Returns_the_times_of_the_oldest_and_the_newest_entry_Async()
+    {
+        var oldest = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero);
+        List<FakeJournalEntry> entries = [FakeJournalEntry.At(oldest, "MESSAGE=a"), FakeJournalEntry.At(oldest.AddDays(30), "MESSAGE=b")];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries));
+
+        var range = await service.GetTimeRange(TestContext.Current.CancellationToken);
+
+        range.Should().Be(new JournalTimeRange(oldest, oldest.AddDays(30)));
+    }
+
+    [Fact]
+    public async Task Returns_null_for_an_empty_journal_Async()
+    {
+        using var service = new JournalService(() => new FakeSystemdJournal([]));
+
+        var range = await service.GetTimeRange(TestContext.Current.CancellationToken);
+
+        range.Should().BeNull();
+    }
+}
+
 [Trait("Category", "Integration")]
 public class JournalService_GetPriorityHistogram_SystemJournal
 {
@@ -641,5 +666,23 @@ public class JournalService_ReadPage_SystemJournal
         }
 
         paged.Select(r => r.Cursor).Should().Equal(whole.Records.Select(r => r.Cursor));
+    }
+}
+
+[Trait("Category", "Integration")]
+public class JournalService_GetTimeRange_SystemJournal
+{
+    [Fact]
+    public async Task Spans_the_oldest_and_the_newest_entry_Async()
+    {
+        using var service = new JournalService(NullLoggerFactory.Instance, Options.Create(new JournalOptions()));
+        JournalFieldSet fields = new("MESSAGE");
+
+        var range = await service.GetTimeRange(TestContext.Current.CancellationToken);
+        var oldest = await service.ReadPage(new(fields) { Count = 1, Direction = JournalDirection.Newer }, TestContext.Current.CancellationToken);
+
+        range.Should().NotBeNull();
+        range!.Oldest.Should().Be(oldest.Records.Single().Timestamp);
+        range.Newest.Should().BeOnOrAfter(range.Oldest);
     }
 }

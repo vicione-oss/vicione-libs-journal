@@ -49,6 +49,9 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_get_realtime_usec(IntPtr journal, out ulong usec);
 
+    [LibraryImport(SYSTEMD_LIB)]
+    internal static partial int sd_journal_get_cutoff_realtime_usec(IntPtr journal, out ulong from, out ulong to);
+
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     internal static partial int sd_journal_get_cursor(IntPtr journal, out IntPtr cursor);
 

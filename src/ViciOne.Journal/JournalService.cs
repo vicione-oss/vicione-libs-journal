@@ -126,6 +126,9 @@ public sealed class JournalService : IJournalService
         }, cancellationToken);
     }
 
+    public Task<JournalTimeRange?> GetTimeRange(CancellationToken cancellationToken = default)
+        => RunQuery(journal => journal.GetTimeRange(), cancellationToken);
+
     public async Task<JournalPage> ReadPage(JournalPageRequest request, CancellationToken cancellationToken = default)
     {
         JournalPageReader.Validate(request);

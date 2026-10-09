@@ -674,6 +674,18 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         }
     }
 
+    public JournalTimeRange? GetTimeRange()
+    {
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            var ret = NativeMethods.sd_journal_get_cutoff_realtime_usec(lease.Handle, out var oldest, out var newest);
+            CheckNativeResult(ret, "sd_journal_get_cutoff_realtime_usec");
+
+            return ret == 0 ? null : new(JournalTime.FromRealtimeUsec(oldest), JournalTime.FromRealtimeUsec(newest));
+        }
+    }
+
     public unsafe bool TryGetData(JournalField field, out ReadOnlySpan<byte> value)
     {
         int ret;

@@ -268,6 +268,75 @@ foreach (var entry in lookBehind.GetLogs(size: 50))
 }
 ```
 
+## Building a Log Viewer
+
+A log viewer shows a chart of entries per time bucket and a scrolling list. These calls read only what such a page
+needs and do not hold a session between calls.
+
+### Reading only the fields a list shows
+
+A `JournalFieldSet` names the fields to read. Create it once and reuse it. Each `JournalRecord` carries the timestamp as
+`DateTimeOffset`, the cursor and the priority, plus the requested fields:
+
+```csharp
+var fields = new JournalFieldSet("MESSAGE", "_SYSTEMD_UNIT", "SYSLOG_IDENTIFIER", "_PID");
+
+// The newest 100 entries, oldest first
+var page = await journalService.ReadPage(new JournalPageRequest(fields) { Count = 100 });
+
+// Scrolling up: the 100 entries before the first one shown
+var older = await journalService.ReadPage(new JournalPageRequest(fields)
+{
+    Count = 100,
+    Cursor = page.Records[0].Cursor,
+});
+
+// Jumping to a minute: the entries from that time on
+var fromTime = await journalService.ReadPage(new JournalPageRequest(fields)
+{
+    Direction = JournalDirection.Newer,
+    Time = new DateTimeOffset(2026, 10, 9, 14, 30, 0, TimeSpan.FromHours(2)),
+    Filter = "PRIORITY=3",
+});
+
+foreach (var record in fromTime.Records)
+    Console.WriteLine($"{record.Timestamp:u} [{record.Priority}] {record["_SYSTEMD_UNIT"]}: {record["MESSAGE"]}");
+```
+
+`HasMore` tells whether more entries follow in the direction that was read. A page read with a cursor never contains
+the cursor's own entry, so consecutive pages neither overlap nor leave gaps.
+
+### Counting entries per time bucket, priority and unit
+
+`GetPriorityHistogram` counts a whole range in one pass. Entries without `_SYSTEMD_UNIT` are grouped by
+`SYSLOG_IDENTIFIER`; pass `groupBy: null` to count all entries in one group:
+
+```csharp
+var end = DateTimeOffset.Now;
+var histogram = await journalService.GetPriorityHistogram(end.AddHours(-1), end, TimeSpan.FromMinutes(1));
+
+for (var bucket = 0; bucket < histogram.BucketCount; bucket++)
+{
+    var errors = histogram.GetCount(bucket, priority: 3);
+    Console.WriteLine($"{histogram.BucketEdges[bucket]:t}: {errors} errors");
+}
+```
+
+For calendar buckets in local time, such as days across a daylight saving change, pass the bucket edges yourself:
+`GetPriorityHistogram(IReadOnlyList<DateTimeOffset> bucketEdges, ...)`. Past buckets never change, so a viewer can cache
+them and recount only the current one.
+
+`GetTimeRange` returns the oldest and the newest entry still in the journal, so a chart can mark where the retained
+journal starts.
+
+### Following new entries as records
+
+```csharp
+using var follower = await journalService.CreateFollower(TimeSpan.FromSeconds(1), fields);
+follower.NewRecords += records => Console.WriteLine($"{records.Count} new entries");
+follower.Start(logCount: 10);
+```
+
 ## Next Steps
 
 - [Configuration Reference](configuration.md) - Learn about all configuration options

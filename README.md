@@ -16,6 +16,7 @@
 - **Write Logs** - Write logs to systemd journal via ILogger or Serilog
 - **Real-time Following** - Follow journal entries in real-time (tail -f style)
 - **Historical Retrieval** - Look-behind sessions for historical log retrieval
+- **Log Viewer Queries** - One-pass histograms per time bucket, priority and unit, and pages of projected records before or after a cursor
 - **Spam Protection** - Spam guard/aggregation to prevent log flooding
 - **Structured Data** - Support for structured data and custom key-value fields
 - **Configurable Modes** - Support for different journal opening modes

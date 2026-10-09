@@ -47,6 +47,9 @@ ViciOne.Journal consists of three NuGet packages:
 - **JournalGenericSession** - Flexible session with full seek/filter control
 - **JournalFollowSession** - Real-time log following (like `tail -f`)
 - **JournalLookBehindSession** - Optimized for reading historical logs
+- **JournalRecordFollowSession** - Real-time following that delivers projected records in batches
+- **JournalHistogram** - Entry counts per time bucket, priority and group from `GetPriorityHistogram`
+- **JournalPage** / **JournalRecord** - Pages of projected entries from `ReadPage`, read only for the fields of a `JournalFieldSet`
 
 ### Writing (ViciOne.Journal.Logging)
 

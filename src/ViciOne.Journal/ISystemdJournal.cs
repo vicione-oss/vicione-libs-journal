@@ -35,4 +35,17 @@ internal interface ISystemdJournal : IDisposable
     /// <param name="value">The value after <c>FIELD=</c>. It is only valid until the next call on this journal.</param>
     /// <returns><see langword="false"/> if the entry has no such field or it cannot be read.</returns>
     bool TryGetData(JournalField field, out ReadOnlySpan<byte> value);
+
+    /// <summary>
+    /// Starts <see cref="TryEnumerateData"/> over at the first field of the current entry.
+    /// </summary>
+    void RestartData();
+
+    /// <summary>
+    /// Reads the next field of the current entry without copying it. Cheaper than several
+    /// <see cref="TryGetData"/> calls, each of which searches the entry's fields.
+    /// </summary>
+    /// <param name="data">The field in the form <c>FIELD=value</c>. It is only valid until the next call on this journal.</param>
+    /// <returns><see langword="false"/> after the last field.</returns>
+    bool TryEnumerateData(out ReadOnlySpan<byte> data);
 }

@@ -16,7 +16,6 @@ internal static class PriorityHistogramCounter
     // would miss them, and never stopping would read the rest of the journal for every range in the past.
     internal const int EntriesPastEndBeforeStop = 1_000;
 
-    private static readonly JournalField s_priority = new("PRIORITY");
     private static readonly JournalField s_fallbackGroup = new("SYSLOG_IDENTIFIER");
 
     internal static IReadOnlyList<DateTimeOffset> CreateBucketEdges(DateTimeOffset start, DateTimeOffset end, TimeSpan bucketSize)
@@ -79,7 +78,7 @@ internal static class PriorityHistogramCounter
             entriesPastEnd = 0;
 
             var bucket = FindBucket(edges, usec);
-            if (bucket < 0 || !TryReadPriority(journal, out var priority))
+            if (bucket < 0 || !JournalPriority.TryRead(journal, out var priority))
                 continue;
 
             groups.GetCountsOfCurrentEntry(journal)[(bucket * JournalHistogram.PriorityLevels) + priority]++;
@@ -93,16 +92,6 @@ internal static class PriorityHistogramCounter
     {
         var index = Array.BinarySearch(edges, usec);
         return index >= 0 ? index : ~index - 1;
-    }
-
-    private static bool TryReadPriority(ISystemdJournal journal, out int priority)
-    {
-        priority = -1;
-        if (!journal.TryGetData(s_priority, out var value) || value.Length != 1)
-            return false;
-
-        priority = value[0] - '0';
-        return priority is >= 0 and < JournalHistogram.PriorityLevels;
     }
 
     private sealed class GroupTable

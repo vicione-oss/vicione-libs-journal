@@ -32,6 +32,7 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
     private int? _current;
     private int _nextCandidate;
     private int _previousCandidate = -1;
+    private int _dataIndex;
 
     public bool IsDisposed { get; private set; }
 
@@ -130,6 +131,23 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
     public ulong GetRealtimeUsec()
         => (ulong)(CurrentEntry.Timestamp - DateTimeOffset.UnixEpoch).Ticks / 10;
 
+    public void RestartData()
+        => _dataIndex = 0;
+
+    public bool TryEnumerateData(out ReadOnlySpan<byte> data)
+    {
+        var fields = CurrentEntry.Fields.ToList();
+        if (_dataIndex >= fields.Count)
+        {
+            data = default;
+            return false;
+        }
+
+        var (name, value) = fields[_dataIndex++];
+        data = Encoding.UTF8.GetBytes($"{name}={value}");
+        return true;
+    }
+
     public bool TryGetData(JournalField field, out ReadOnlySpan<byte> value)
     {
         value = CurrentEntry.Fields.TryGetValue(field.Name, out var text) ? Encoding.UTF8.GetBytes(text) : default;
@@ -150,6 +168,7 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
     {
         Stepped?.Invoke();
         _current = index;
+        _dataIndex = 0;
         _nextCandidate = index + 1;
         _previousCandidate = index - 1;
         return true;

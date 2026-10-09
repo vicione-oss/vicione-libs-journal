@@ -12,4 +12,7 @@ internal static class JournalTime
 
         return (ulong)(time - DateTimeOffset.UnixEpoch).Ticks / 10;
     }
+
+    public static DateTimeOffset FromRealtimeUsec(ulong usec)
+        => DateTimeOffset.UnixEpoch.AddTicks((long)usec * 10);
 }

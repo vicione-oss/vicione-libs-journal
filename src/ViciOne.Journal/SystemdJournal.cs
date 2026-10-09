@@ -690,6 +690,40 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         return true;
     }
 
+    public void RestartData()
+    {
+        lock (_syncLock)
+        {
+            SafeNativeCall(handle =>
+            {
+                NativeMethods.sd_journal_restart_data(handle);
+                return 0;
+            });
+        }
+    }
+
+    public unsafe bool TryEnumerateData(out ReadOnlySpan<byte> data)
+    {
+        int ret;
+        IntPtr pointer;
+        UIntPtr length;
+
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            ret = NativeMethods.sd_journal_enumerate_data(lease.Handle, out pointer, out length);
+        }
+
+        if (ret < 0)
+        {
+            _logger?.LogEnumerateDataFailed(ret);
+            throw new JournalException("sd_journal_enumerate_data failed", ret);
+        }
+
+        data = ret == 0 || pointer == IntPtr.Zero ? default : new ReadOnlySpan<byte>(pointer.ToPointer(), (int)length);
+        return ret > 0 && pointer != IntPtr.Zero;
+    }
+
     /// <summary>
     /// Enumerates all available fields in the journal.
     /// </summary>

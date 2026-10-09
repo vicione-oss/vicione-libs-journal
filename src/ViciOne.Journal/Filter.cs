@@ -2,7 +2,7 @@
 
 internal static class Filter
 {
-    internal static void Apply(string filter, SystemdJournal journal)
+    internal static void Apply(string filter, ISystemdJournal journal)
         => Apply(filter, journal.AddMatch, journal.AddDisjunction);
 
     internal static void Apply(string filter, Action<string> addMatch, Action addDisjunction)

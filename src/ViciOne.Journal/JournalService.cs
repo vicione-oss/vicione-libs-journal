@@ -4,10 +4,23 @@ using Microsoft.Extensions.Options;
 
 namespace ViciOne.Journal;
 
-public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options) : IJournalService
+public sealed class JournalService : IJournalService
 {
-    private readonly ILogger<SystemdJournal>? _systemdLogger = options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null;
+    private readonly ILogger<SystemdJournal>? _systemdLogger;
+    private readonly Func<ISystemdJournal> _openJournal;
     private readonly AccessControl _accessControl = new(5);
+
+    public JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options)
+    {
+        var logger = options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null;
+        var openingMode = options.Value.OpeningMode;
+
+        _systemdLogger = logger;
+        _openJournal = () => new SystemdJournal(logger, openingMode);
+    }
+
+    internal JournalService(Func<ISystemdJournal> openJournal)
+        => _openJournal = openJournal;
 
     [SuppressMessage("Performance", "CA1822:Member als statisch markieren")]
     public IReadOnlyDictionary<string, string> GetFieldDescriptions()
@@ -16,14 +29,14 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
     public async Task<IReadOnlyCollection<string>> GetFields(CancellationToken cancellationToken = default)
         => await _accessControl.Run(() =>
         {
-            using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
+            using var journal = _openJournal();
             return journal.EnumerateAvailableFields();
         }, cancellationToken);
 
     public async Task<IReadOnlyCollection<string>> GetFieldValues(string field, CancellationToken cancellationToken = default)
         => await _accessControl.Run(() =>
         {
-            using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
+            using var journal = _openJournal();
             return journal.EnumerateUniqueFieldValues(field);
         }, cancellationToken);
 
@@ -38,7 +51,7 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
             if (since > DateTimeOffset.Now)
                 throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
 
-            using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
+            using var journal = _openJournal();
 
             try
             {
@@ -93,7 +106,7 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
         if (pageSize < 1)
             throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0.");
 
-        using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
+        using var journal = _openJournal();
 
         try
         {
@@ -143,7 +156,7 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
     public async Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset since, string? filter = null, CancellationToken cancellationToken = default)
         => await _accessControl.Run(() =>
         {
-            using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
+            using var journal = _openJournal();
 
             try
             {
@@ -169,7 +182,7 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
     public async Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset start, DateTimeOffset end, string? filter = null, CancellationToken cancellationToken = default)
         => await _accessControl.Run(() =>
         {
-            using var journal = new SystemdJournal(_systemdLogger, options.Value.OpeningMode);
+            using var journal = _openJournal();
 
             try
             {
@@ -196,14 +209,14 @@ public sealed class JournalService(ILoggerFactory loggerFactory, IOptions<Journa
     public async Task<IJournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default)
     {
         var access = await _accessControl.Begin(cancellationToken);
-        return new JournalGenericSession(options.Value, access.Dispose, _systemdLogger);
+        return new JournalGenericSession(_openJournal, access.Dispose, _systemdLogger);
     }
 
     [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht")]
     public async Task<IJournalFollowSession> CreateFollower(TimeSpan interval, CancellationToken cancellation = default)
     {
         var access = await _accessControl.Begin(cancellation);
-        return new JournalFollowSession(options.Value, interval, access.Dispose, _systemdLogger);
+        return new JournalFollowSession(_openJournal, interval, access.Dispose, _systemdLogger);
     }
 
     public void Dispose()

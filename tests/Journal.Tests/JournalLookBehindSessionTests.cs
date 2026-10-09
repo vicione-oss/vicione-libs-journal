@@ -10,7 +10,7 @@ public sealed class JournalLookBehindSession_
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
     private static JournalLookBehindSession CreateSession()
         => new(new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => { }));
 
     [Fact]
@@ -39,7 +39,7 @@ public sealed class JournalLookBehindSession_GetLogs
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
     private static JournalLookBehindSession CreateSession()
         => new(new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => { }));
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class JournalLookBehindSession_SetFilter
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
     private static JournalLookBehindSession CreateSession()
         => new(new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => { }));
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class JournalLookBehindSession_Dispose
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
     private static JournalLookBehindSession CreateSession()
         => new(new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => { }));
 
     [Fact]
@@ -179,7 +179,7 @@ public sealed class JournalLookBehindSession_Dispose
     {
         var disposed = false;
         var genericSession = new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => disposed = true);
 
         var lookBehindSession = new JournalLookBehindSession(genericSession);

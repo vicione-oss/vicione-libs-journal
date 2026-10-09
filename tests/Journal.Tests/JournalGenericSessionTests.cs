@@ -8,7 +8,7 @@ namespace Journal.Tests;
 public sealed class JournalGenericSession_
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void Can_create_generic_session()
@@ -85,7 +85,7 @@ public sealed class JournalGenericSession_
 public sealed class JournalGenericSession_GetCursor
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void GetCursor_returns_valid_cursor_string()
@@ -124,7 +124,7 @@ public sealed class JournalGenericSession_GetCursor
 public sealed class JournalGenericSession_SetFilter
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void SetFilter_filters_logs_by_priority()
@@ -187,7 +187,7 @@ public sealed class JournalGenericSession_SetFilter
 public sealed class JournalGenericSession_GetLogs
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void Returns_entries_with_expected_fields()
@@ -276,7 +276,7 @@ public sealed class JournalGenericSession_GetLogs
 public sealed class JournalGenericSession_Dispose
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
@@ -311,7 +311,7 @@ public sealed class JournalGenericSession_Dispose
     {
         var callbackInvoked = false;
         var session = new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => callbackInvoked = true);
 
         session.Dispose();

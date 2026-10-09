@@ -23,12 +23,12 @@ public sealed class JournalFollowSession : IJournalFollowSession
     /// </summary>
     public event Action<Exception>? Error;
 
-    internal JournalFollowSession(JournalOptions options, TimeSpan interval, Action onDispose, ILogger<SystemdJournal>? logger = null)
+    internal JournalFollowSession(Func<ISystemdJournal> openJournal, TimeSpan interval, Action onDispose, ILogger<SystemdJournal>? logger = null)
     {
         if (interval.TotalMilliseconds < 250)
             throw new InvalidOperationException("The interval must be greater then 250ms.");
 
-        _journalThread = new JournalThread(options, logger);
+        _journalThread = new JournalThread(openJournal, logger);
         _onDispose = onDispose;
         _logger = logger;
         _interval = interval;

@@ -95,7 +95,7 @@ namespace ViciOne.Journal;
 /// A convenient wrapper around the systemd sd-journal C API.
 /// Provides functions for opening/closing, filtering, navigating, and retrieving journal entries.
 /// </summary>
-internal sealed partial class SystemdJournal : IDisposable
+internal sealed partial class SystemdJournal : ISystemdJournal
 {
     private const int MAX_NATIVE_ERRORS = 2;
 

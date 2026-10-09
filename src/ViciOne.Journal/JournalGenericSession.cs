@@ -9,9 +9,9 @@ public sealed class JournalGenericSession : IJournalGenericSession
 
     private bool _positionSet;
 
-    internal JournalGenericSession(JournalOptions options, Action onDispose, ILogger<SystemdJournal>? logger = null)
+    internal JournalGenericSession(Func<ISystemdJournal> openJournal, Action onDispose, ILogger<SystemdJournal>? logger = null)
     {
-        _journalThread = new JournalThread(options, logger);
+        _journalThread = new JournalThread(openJournal, logger);
         _onDispose = onDispose;
 
         try

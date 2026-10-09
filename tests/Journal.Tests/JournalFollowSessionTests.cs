@@ -11,7 +11,7 @@ public sealed class JournalFollowSession_
     public void Can_create_follow_session()
     {
         using var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(500),
             () => { });
 
@@ -22,7 +22,7 @@ public sealed class JournalFollowSession_
     public void Throws_when_interval_less_than_250ms()
     {
         var act = () => new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(100),
             () => { });
 
@@ -34,7 +34,7 @@ public sealed class JournalFollowSession_
     public void Accepts_interval_of_250ms()
     {
         using var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(250),
             () => { });
 
@@ -47,7 +47,7 @@ public sealed class JournalFollowSession_StartStop
 {
     private static JournalFollowSession CreateSession()
         => new(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 
@@ -108,7 +108,7 @@ public sealed class JournalFollowSession_SetFilter
 {
     private static JournalFollowSession CreateSession()
         => new(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 
@@ -162,7 +162,7 @@ public sealed class JournalFollowSession_Events
 {
     private static JournalFollowSession CreateSession()
         => new(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 
@@ -224,7 +224,7 @@ public sealed class JournalFollowSession_Dispose
     public void Dispose_releases_resources_gracefully()
     {
         var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 
@@ -240,7 +240,7 @@ public sealed class JournalFollowSession_Dispose
     {
         var callbackInvoked = false;
         var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => callbackInvoked = true);
 
@@ -253,7 +253,7 @@ public sealed class JournalFollowSession_Dispose
     public void Dispose_stops_running_session()
     {
         var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 
@@ -270,7 +270,7 @@ public sealed class JournalFollowSession_Dispose
         for (var i = 0; i < 3; i++)
         {
             using var session = new JournalFollowSession(
-                new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+                () => new SystemdJournal(),
                 TimeSpan.FromMilliseconds(300),
                 () => { });
 
@@ -289,7 +289,7 @@ public sealed class JournalFollowSession_FilteredEvents
     public async Task Filtered_session_only_receives_matching_entries()
     {
         using var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 
@@ -312,7 +312,7 @@ public sealed class JournalFollowSession_FilteredEvents
     public async Task Disjunction_filter_receives_multiple_priorities()
     {
         using var session = new JournalFollowSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             TimeSpan.FromMilliseconds(300),
             () => { });
 

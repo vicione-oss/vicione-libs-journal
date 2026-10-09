@@ -9,24 +9,25 @@ public sealed class JournalService : IJournalService
     private readonly ILogger<SystemdJournal>? _systemdLogger;
     private readonly Func<ISystemdJournal> _openJournal;
     private readonly AccessControl _sessions;
-    private readonly AccessControl _queries;
+    private readonly JournalQueryPool _queries;
 
     public JournalService(ILoggerFactory loggerFactory, IOptions<JournalOptions> options)
         : this(options.Value, options.Value.EnableLogging ? loggerFactory.CreateLogger<SystemdJournal>() : null)
     { }
 
     private JournalService(JournalOptions options, ILogger<SystemdJournal>? logger)
-        : this(() => new SystemdJournal(logger, options.OpeningMode), options)
-        => _systemdLogger = logger;
+        : this(() => new SystemdJournal(logger, options.OpeningMode), options, logger)
+    { }
 
-    internal JournalService(Func<ISystemdJournal> openJournal, JournalOptions? options = null)
+    internal JournalService(Func<ISystemdJournal> openJournal, JournalOptions? options = null, ILogger<SystemdJournal>? logger = null)
     {
         options ??= new();
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxSessions, 1, nameof(JournalOptions.MaxSessions));
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxConcurrentQueries, 1, nameof(JournalOptions.MaxConcurrentQueries));
         _openJournal = openJournal;
+        _systemdLogger = logger;
         _sessions = new(options.MaxSessions, $"Only {options.MaxSessions} journal sessions may be open at once.");
-        _queries = new(options.MaxConcurrentQueries, $"Only {options.MaxConcurrentQueries} journal queries may run at once.");
+        _queries = new(openJournal, options.MaxConcurrentQueries, logger);
     }
 
     [SuppressMessage("Performance", "CA1822:Member als statisch markieren")]
@@ -71,14 +72,17 @@ public sealed class JournalService : IJournalService
                 List<IReadOnlyDictionary<string, string>> logs = new(limit);
 
                 while (logs.Count < limit && journal.Next())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     logs.Add(journal.GetCurrentEntry());
+                }
 
                 if (descending)
                     logs.Reverse();
 
                 return logs;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 throw new InvalidOperationException("Error reading journal entries.", ex);
             }
@@ -197,13 +201,8 @@ public sealed class JournalService : IJournalService
         }
     }
 
-    // Opening a journal and walking it block, so neither happens on the caller's thread.
     private Task<T> RunQuery<T>(Func<ISystemdJournal, T> query, CancellationToken cancellationToken)
-        => Task.Run(() => _queries.Run(() =>
-        {
-            using var journal = _openJournal();
-            return query(journal);
-        }), cancellationToken);
+        => _queries.Run(query, cancellationToken);
 
     [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht", Justification = "The session releases the slot when it is disposed.")]
     private Task<T> OpenSession<T>(Func<Action, T> create, CancellationToken cancellationToken)

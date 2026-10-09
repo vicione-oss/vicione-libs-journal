@@ -105,19 +105,8 @@ internal sealed class JournalThread : IDisposable
     /// <param name="cancellationToken">Optional cancellation token.</param>
     internal void Execute(Action<ISystemdJournal> action, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
         var workItem = new ActionWorkItem(action);
-
-        try
-        {
-            _workQueue.Add(workItem, cancellationToken);
-        }
-        catch (InvalidOperationException) when (_workQueue.IsAddingCompleted)
-        {
-            throw new ObjectDisposedException(nameof(JournalThread), "The journal thread has been disposed.");
-        }
-
+        Enqueue(workItem, cancellationToken);
         workItem.Wait(cancellationToken);
     }
 
@@ -128,9 +117,25 @@ internal sealed class JournalThread : IDisposable
     /// <param name="cancellationToken">Optional cancellation token.</param>
     internal T Execute<T>(Func<ISystemdJournal, T> func, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
         var workItem = new FuncWorkItem<T>(func);
+        Enqueue(workItem, cancellationToken);
+        return workItem.GetResult(cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a function on the dedicated journal thread without blocking the caller.
+    /// </summary>
+    /// <returns>A task that completes when the function has run; <paramref name="func"/> observes cancellation itself.</returns>
+    internal Task<T> ExecuteAsync<T>(Func<ISystemdJournal, T> func)
+    {
+        var workItem = new FuncWorkItem<T>(func);
+        Enqueue(workItem, CancellationToken.None);
+        return workItem.Task;
+    }
+
+    private void Enqueue(WorkItem workItem, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         try
         {
@@ -140,8 +145,6 @@ internal sealed class JournalThread : IDisposable
         {
             throw new ObjectDisposedException(nameof(JournalThread), "The journal thread has been disposed.");
         }
-
-        return workItem.GetResult(cancellationToken);
     }
 
     public void Dispose()
@@ -218,6 +221,9 @@ internal sealed class JournalThread : IDisposable
 
         public override void SetException(Exception ex)
             => _tcs.TrySetException(ex);
+
+        public Task<T> Task
+            => _tcs.Task;
 
         public T GetResult(CancellationToken cancellationToken)
         {

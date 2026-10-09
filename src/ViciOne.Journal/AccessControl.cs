@@ -17,13 +17,6 @@ internal sealed class AccessControl(int limit, string busyMessage) : IDisposable
         return new Slot(_semaphore);
     }
 
-    /// <exception cref="JournalBusyException">Thrown when all slots are taken.</exception>
-    internal T Run<T>(Func<T> action)
-    {
-        using var slot = Acquire();
-        return action();
-    }
-
     private sealed class Slot(SemaphoreSlim semaphore) : IDisposable
     {
         private int _released;

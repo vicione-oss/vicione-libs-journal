@@ -76,6 +76,7 @@ A `SafeJournalHandle` ensures proper cleanup of native resources.
 
 - **AccessControl** limits open sessions (`MaxSessions`, default 5) and running queries (`MaxConcurrentQueries`, default 4) separately and fails fast with a `JournalBusyException`
 - Each session has its own journal handle
+- One-shot queries run on a pool of journals that stay open between queries, each on its own thread, because opening a journal maps all of its files
 - Sessions should not be shared across threads
 
 ## Memory Management

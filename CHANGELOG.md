@@ -33,6 +33,7 @@
 - Open sessions no longer use up the slots of one-shot queries such as `GetLogs`
 - Throw `JournalBusyException`, an `InvalidOperationException`, when a limit is reached
 - Run one-shot queries and session creation off the caller's thread
+- Reuse up to `MaxConcurrentQueries` open journals for one-shot queries instead of opening one per call, which took about 30 ms on a desktop
 
 ## 1.2.0 - 2026-04-10
 

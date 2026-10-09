@@ -43,6 +43,17 @@ public class JournalService_GetLogs
         logs.Select(l => l["MESSAGE"]).Should().Equal("third", "second");
     }
 
+    [Fact]
+    public async Task Throws_OperationCanceledException_when_cancelled_while_reading_Async()
+    {
+        using CancellationTokenSource cancellation = new();
+        using var service = new JournalService(() => new FakeSystemdJournal(_entries) { Stepped = cancellation.Cancel });
+
+        var act = () => service.GetLogs(At(0), "asc", cancellationToken: cancellation.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
     [Theory]
     [InlineData("DESC")]
     [InlineData("Desc")]

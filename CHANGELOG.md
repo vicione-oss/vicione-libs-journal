@@ -14,6 +14,7 @@
 - Fix `GetLogs` returning ascending order for `DESC` or any other case than `desc`
 - Fix filter values in double quotes never matching; the quotes are removed and no longer required for values with spaces
 - Fix follow sessions missing entries from journal files created after they opened, such as after a rotation
+- Fix `IJournalFollowSession.Start(logCount)` delivering one recent entry less than requested
 
 ### Changed
 

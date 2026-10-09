@@ -141,8 +141,13 @@ public sealed class JournalFollowSession : IJournalFollowSession
     {
         _journalThread.Execute(j =>
         {
-            for (var i = 0; i < times; i++)
-                j.Previous();
+            var moved = false;
+            for (var i = 0; i < times && j.Previous(); i++)
+                moved = true;
+
+            // Next() would step past the entry reached last; seeking its cursor makes it the first one read.
+            if (moved)
+                j.SeekCursor(j.GetCursor());
         });
     }
 

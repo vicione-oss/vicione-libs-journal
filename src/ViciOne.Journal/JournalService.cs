@@ -201,6 +201,38 @@ public sealed class JournalService : IJournalService
             }
         }, cancellationToken);
 
+    public Task<JournalHistogram> GetPriorityHistogram(DateTimeOffset start, DateTimeOffset end, TimeSpan bucketSize, string? filter = null, string? groupBy = JournalHistogram.DefaultGroupBy, CancellationToken cancellationToken = default)
+        => GetPriorityHistogram(PriorityHistogramCounter.CreateBucketEdges(start, end, bucketSize), filter, groupBy, cancellationToken);
+
+    public async Task<JournalHistogram> GetPriorityHistogram(IReadOnlyList<DateTimeOffset> bucketEdges, string? filter = null, string? groupBy = JournalHistogram.DefaultGroupBy, CancellationToken cancellationToken = default)
+    {
+        PriorityHistogramCounter.Validate(bucketEdges, groupBy);
+
+        return await _accessControl.Run(() =>
+        {
+            using var journal = _openJournal();
+
+            try
+            {
+                if (!string.IsNullOrEmpty(filter))
+                    Filter.Apply(filter, journal);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
+            }
+
+            try
+            {
+                return PriorityHistogramCounter.Count(journal, bucketEdges, groupBy, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException("Error reading priority counts.", ex);
+            }
+        }, cancellationToken);
+    }
+
     [SuppressMessage("Reliability", "CA2000:Objekte verwerfen, bevor Bereich verloren geht")]
     public async Task<IJournalGenericSession> CreateGeneric(CancellationToken cancellationToken = default)
     {

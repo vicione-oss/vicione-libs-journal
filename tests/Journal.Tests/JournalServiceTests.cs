@@ -1,5 +1,8 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using ViciOne.Journal;
 
 namespace Journal.Tests;
@@ -74,6 +77,194 @@ public class JournalService_GetLogs
     }
 }
 
+public class JournalService_GetPriorityHistogram
+{
+    private static readonly DateTimeOffset s_start = new(2026, 3, 1, 8, 0, 0, TimeSpan.Zero);
+
+    private static JournalService CreateService(params FakeJournalEntry[] entries)
+    {
+        List<FakeJournalEntry> list = [.. entries];
+        return new(() => new FakeSystemdJournal(list));
+    }
+
+    [Fact]
+    public async Task Counts_entries_per_bucket_and_priority_Async()
+    {
+        using var service = CreateService(
+            FakeJournalEntry.At(s_start.AddMinutes(-1), "PRIORITY=3"),
+            FakeJournalEntry.At(s_start, "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(9), "PRIORITY=6"),
+            FakeJournalEntry.At(s_start.AddMinutes(10), "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(19), "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(20), "PRIORITY=3"));
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(20), TimeSpan.FromMinutes(10), cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.BucketCount.Should().Be(2);
+        histogram.GetCount(0, 3).Should().Be(1);
+        histogram.GetCount(0, 6).Should().Be(1);
+        histogram.GetCount(1, 3).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Counts_entries_of_the_range_that_follow_a_later_one_Async()
+    {
+        using var service = CreateService(
+            FakeJournalEntry.At(s_start, "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddHours(2), "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(1), "PRIORITY=3"));
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(10), TimeSpan.FromMinutes(10), cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.GetCount(0, 3).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Stops_after_a_run_of_entries_past_the_end_of_the_range_Async()
+    {
+        using var service = CreateService(
+        [
+            .. Enumerable.Range(0, 1_000).Select(_ => FakeJournalEntry.At(s_start.AddHours(2), "PRIORITY=3")),
+            FakeJournalEntry.At(s_start.AddMinutes(1), "PRIORITY=3"),
+        ]);
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(10), TimeSpan.FromMinutes(10), cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.GetCount(0, 3).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Ends_the_last_bucket_at_the_end_of_the_range_Async()
+    {
+        using var service = CreateService();
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(25), TimeSpan.FromMinutes(10), cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.BucketEdges.Should().Equal(s_start, s_start.AddMinutes(10), s_start.AddMinutes(20), s_start.AddMinutes(25));
+    }
+
+    [Fact]
+    public async Task Groups_by_unit_and_falls_back_to_the_syslog_identifier_Async()
+    {
+        using var service = CreateService(
+            FakeJournalEntry.At(s_start, "PRIORITY=3", "_SYSTEMD_UNIT=a.service", "SYSLOG_IDENTIFIER=a"),
+            FakeJournalEntry.At(s_start, "PRIORITY=3", "SYSLOG_IDENTIFIER=kernel"),
+            FakeJournalEntry.At(s_start, "PRIORITY=4", "_SYSTEMD_UNIT=a.service"),
+            FakeJournalEntry.At(s_start, "PRIORITY=4"));
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(1), TimeSpan.FromMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.Groups.Should().Equal("a.service", "kernel", "");
+        histogram.GetCount(0, 3, 0).Should().Be(1);
+        histogram.GetCount(0, 4, 0).Should().Be(1);
+        histogram.GetCount(0, 3, 1).Should().Be(1);
+        histogram.GetCount(0, 4, 2).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Counts_all_entries_in_one_group_without_grouping_Async()
+    {
+        using var service = CreateService(
+            FakeJournalEntry.At(s_start, "PRIORITY=3", "_SYSTEMD_UNIT=a.service"),
+            FakeJournalEntry.At(s_start, "PRIORITY=3", "_SYSTEMD_UNIT=b.service"));
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(1), TimeSpan.FromMinutes(1), groupBy: null, cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.Groups.Should().Equal("");
+        histogram.GetCount(0, 3, 0).Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData("PRIORITY=8")]
+    [InlineData("PRIORITY=x")]
+    [InlineData("PRIORITY=13")]
+    [InlineData("MESSAGE=no priority")]
+    public async Task Skips_entries_without_a_valid_priority_Async(string field)
+    {
+        using var service = CreateService(FakeJournalEntry.At(s_start, field));
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(1), TimeSpan.FromMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.Groups.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Counts_only_entries_matching_the_filter_Async()
+    {
+        using var service = CreateService(
+            FakeJournalEntry.At(s_start, "PRIORITY=3", "_SYSTEMD_UNIT=a.service"),
+            FakeJournalEntry.At(s_start, "PRIORITY=3", "_SYSTEMD_UNIT=b.service"));
+
+        var histogram = await service.GetPriorityHistogram(s_start, s_start.AddMinutes(1), TimeSpan.FromMinutes(1), filter: "_SYSTEMD_UNIT=b.service", cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.Groups.Should().Equal("b.service");
+    }
+
+    [Fact]
+    public async Task Places_entries_by_instant_when_the_edges_cross_a_daylight_saving_change_Async()
+    {
+        var cest = TimeSpan.FromHours(2);
+        var cet = TimeSpan.FromHours(1);
+        DateTimeOffset[] localHours =
+        [
+            new(2026, 10, 25, 1, 0, 0, cest),
+            new(2026, 10, 25, 2, 0, 0, cest),
+            new(2026, 10, 25, 2, 0, 0, cet),
+            new(2026, 10, 25, 3, 0, 0, cet),
+        ];
+        using var service = CreateService(
+            FakeJournalEntry.At(new DateTimeOffset(2026, 10, 25, 0, 30, 0, TimeSpan.Zero), "PRIORITY=6"),
+            FakeJournalEntry.At(new DateTimeOffset(2026, 10, 25, 0, 59, 0, TimeSpan.Zero), "PRIORITY=6"),
+            FakeJournalEntry.At(new DateTimeOffset(2026, 10, 25, 1, 0, 0, TimeSpan.Zero), "PRIORITY=6"));
+
+        var histogram = await service.GetPriorityHistogram(localHours, cancellationToken: TestContext.Current.CancellationToken);
+
+        histogram.GetCount(0, 6).Should().Be(0);
+        histogram.GetCount(1, 6).Should().Be(2);
+        histogram.GetCount(2, 6).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Stops_when_the_groups_would_exceed_the_counter_limit_Async()
+    {
+        using var service = CreateService([.. Enumerable.Range(0, 11).Select(i => FakeJournalEntry.At(s_start, "PRIORITY=6", $"_SYSTEMD_UNIT=unit{i}.service"))]);
+
+        var act = () => service.GetPriorityHistogram(s_start, s_start.AddMinutes(50_000), TimeSpan.FromMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).WithInnerException<InvalidOperationException>().WithMessage("*counter limit*");
+    }
+
+    [Fact]
+    public async Task Rejects_an_invalid_group_field_before_reading_Async()
+    {
+        using var service = CreateService();
+
+        var act = () => service.GetPriorityHistogram(s_start, s_start.AddMinutes(1), TimeSpan.FromMinutes(1), groupBy: "unit", cancellationToken: TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<ArgumentException>().WithParameterName("groupBy");
+    }
+
+    [Fact]
+    public async Task Rejects_bucket_edges_before_1970_Async()
+    {
+        using var service = CreateService();
+
+        var act = () => service.GetPriorityHistogram([DateTimeOffset.UnixEpoch.AddDays(-1), s_start], cancellationToken: TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task Rejects_bucket_edges_that_are_not_increasing_Async()
+    {
+        using var service = CreateService();
+
+        var act = () => service.GetPriorityHistogram([s_start, s_start], cancellationToken: TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+}
+
 public class JournalService_CreateFollower
 {
     [Fact]
@@ -113,5 +304,33 @@ public class JournalService_CreateFollower
         await follower.Stop();
 
         messages.Should().Equal("second", "third");
+    }
+}
+
+[Trait("Category", "Integration")]
+public class JournalService_GetPriorityHistogram_SystemJournal
+{
+    [Fact]
+    public async Task Matches_the_priorities_and_units_of_the_full_entries_Async()
+    {
+        using var service = new JournalService(NullLoggerFactory.Instance, Options.Create(new JournalOptions()));
+        var end = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var start = end.AddDays(-7);
+
+        var histogram = await service.GetPriorityHistogram(start, end, TimeSpan.FromDays(7), cancellationToken: TestContext.Current.CancellationToken);
+        var entries = await service.GetLogs(start, "asc", limit: 1_000_000, cancellationToken: TestContext.Current.CancellationToken);
+
+        var expected = entries
+            .Where(e => DateTimeOffset.Parse(e["REALTIME_TIMESTAMP"], CultureInfo.InvariantCulture) < end)
+            .Where(e => e.TryGetValue("PRIORITY", out var p) && p is [>= '0' and <= '7'])
+            .GroupBy(e => (Group: e.GetValueOrDefault("_SYSTEMD_UNIT") ?? e.GetValueOrDefault("SYSLOG_IDENTIFIER") ?? "", Priority: int.Parse(e["PRIORITY"], CultureInfo.InvariantCulture)))
+            .ToDictionary(g => g.Key, g => g.Count());
+        var actual = histogram.Groups
+            .SelectMany((group, index) => Enumerable.Range(0, JournalHistogram.PriorityLevels)
+                .Select(priority => (Key: (Group: group, Priority: priority), Count: histogram.GetCount(0, priority, index))))
+            .Where(c => c.Count > 0)
+            .ToDictionary(c => c.Key, c => c.Count);
+
+        actual.Should().NotBeEmpty().And.Equal(expected);
     }
 }

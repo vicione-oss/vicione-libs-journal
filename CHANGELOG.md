@@ -5,6 +5,7 @@
 ### Added
 
 - `IJournalGenericSession.SeekRealTime(DateTimeOffset)` seeks to an instant regardless of the device time zone
+- `IJournalService.GetPriorityHistogram` counts entries per time bucket, priority and systemd unit in one pass, with uniform buckets or explicit bucket edges
 
 ### Fixed
 

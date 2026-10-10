@@ -152,54 +152,19 @@ public sealed class JournalService : IJournalService
     }
 
     public async Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset since, string? filter = null, CancellationToken cancellationToken = default)
-        => await _accessControl.Run(() =>
-        {
-            using var journal = _openJournal();
+    {
+        if (since > DateTimeOffset.Now)
+            throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
 
-            try
-            {
-                if (!string.IsNullOrEmpty(filter))
-                    Filter.Apply(filter, journal);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
-            }
-
-            try
-            {
-                return journal.GetPriorityCountsSince(since.UtcDateTime, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Error reading priority counts.", ex);
-            }
-        }, cancellationToken);
+        return await GetPriorityCounts(since, DateTimeOffset.Now, filter, cancellationToken);
+    }
 
     public async Task<IReadOnlyDictionary<int, int>> GetPriorityCounts(DateTimeOffset start, DateTimeOffset end, string? filter = null, CancellationToken cancellationToken = default)
-        => await _accessControl.Run(() =>
-        {
-            using var journal = _openJournal();
+    {
+        var histogram = await GetPriorityHistogram([start, end], filter, groupBy: null, cancellationToken);
 
-            try
-            {
-                if (!string.IsNullOrEmpty(filter))
-                    Filter.Apply(filter, journal);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
-            }
-
-            try
-            {
-                return journal.GetPriorityCountsBetween(start.UtcDateTime, end.UtcDateTime, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Error reading priority counts.", ex);
-            }
-        }, cancellationToken);
+        return Enumerable.Range(0, JournalHistogram.PriorityLevels).ToDictionary(p => p, p => histogram.GetCount(0, p));
+    }
 
     public Task<JournalHistogram> GetPriorityHistogram(DateTimeOffset start, DateTimeOffset end, TimeSpan bucketSize, string? filter = null, string? groupBy = JournalHistogram.DefaultGroupBy, CancellationToken cancellationToken = default)
         => GetPriorityHistogram(PriorityHistogramCounter.CreateBucketEdges(start, end, bucketSize), filter, groupBy, cancellationToken);

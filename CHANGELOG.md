@@ -18,11 +18,14 @@
 - Fix `IJournalFollowSession.Start(logCount)` delivering one recent entry less than requested
 - Fix `SetFilter` on generic and follow sessions combining the new filter with the previous one instead of replacing it
 - Fix follow sessions raising `Error` when they are stopped or disposed while reading new entries
+- Fix `GetPriorityCounts(start, end)` throwing `KeyNotFoundException` for any interval that contains entries
 
 ### Changed
 
 - Serilog sink: when a metadata field and a log event property map to the same field name, the metadata field now takes precedence, as it already did in `JournalLogger`
 - Reverse `GetLogs` results for `desc` in linear instead of quadratic time
+- Count `GetPriorityCounts` without allocating per entry
+- `GetPriorityCounts` throws `OperationCanceledException` when cancelled and `ArgumentOutOfRangeException` for a `since` in the future, instead of `InvalidOperationException`
 
 ## 1.2.0 - 2026-04-10
 

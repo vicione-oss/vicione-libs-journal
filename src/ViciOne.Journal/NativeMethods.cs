@@ -34,9 +34,6 @@ internal static partial class NativeMethods
     internal static partial int sd_journal_seek_realtime_usec(IntPtr journal, ulong usec);
 
     // sd_journal_get_data returns a pointer to internal memory and should not be freed manually.
-    [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
-    internal static partial int sd_journal_get_data(IntPtr journal, string field, out IntPtr data, out UIntPtr length);
-
     // The field name must be NUL-terminated UTF-8.
     [LibraryImport(SYSTEMD_LIB)]
     internal static unsafe partial int sd_journal_get_data(IntPtr journal, byte* field, out IntPtr data, out UIntPtr length);

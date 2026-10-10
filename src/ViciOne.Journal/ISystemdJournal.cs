@@ -21,8 +21,6 @@ internal interface ISystemdJournal : IDisposable
     string GetCursor();
     List<string> EnumerateAvailableFields();
     List<string> EnumerateUniqueFieldValues(string field);
-    Dictionary<int, int> GetPriorityCountsSince(DateTime since, CancellationToken cancellationToken = default);
-    Dictionary<int, int> GetPriorityCountsBetween(DateTime start, DateTime end, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Picks up journal files that were created or rotated since the journal was opened.

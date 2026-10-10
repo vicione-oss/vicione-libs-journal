@@ -35,6 +35,11 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
 
     public bool IsDisposed { get; private set; }
 
+    /// <summary>
+    /// Called after each successful <see cref="Next"/> or <see cref="Previous"/>, for example to cancel a walk midway.
+    /// </summary>
+    public Action? Stepped { get; init; }
+
     public void Dispose()
         => IsDisposed = true;
 
@@ -131,12 +136,6 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
         return text is not null;
     }
 
-    public Dictionary<int, int> GetPriorityCountsSince(DateTime since, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
-
-    public Dictionary<int, int> GetPriorityCountsBetween(DateTime start, DateTime end, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
-
     private FakeJournalEntry CurrentEntry
         => entries[_current ?? throw new InvalidOperationException("No current entry.")];
 
@@ -149,6 +148,7 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
 
     private bool MoveTo(int index)
     {
+        Stepped?.Invoke();
         _current = index;
         _nextCandidate = index + 1;
         _previousCandidate = index - 1;

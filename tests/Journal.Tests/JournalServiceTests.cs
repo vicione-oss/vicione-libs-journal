@@ -77,6 +77,66 @@ public class JournalService_GetLogs
     }
 }
 
+public class JournalService_GetPriorityCounts
+{
+    private static readonly DateTimeOffset s_start = new(2026, 3, 1, 8, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task Counts_each_priority_of_an_interval_with_entries_Async()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(s_start, "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(1), "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(2), "PRIORITY=6"),
+            FakeJournalEntry.At(s_start.AddMinutes(3), "PRIORITY=4"),
+        ];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries));
+
+        var counts = await service.GetPriorityCounts(s_start, s_start.AddMinutes(3), cancellationToken: TestContext.Current.CancellationToken);
+
+        counts.Should().Equal(new Dictionary<int, int> { [0] = 0, [1] = 0, [2] = 0, [3] = 2, [4] = 0, [5] = 0, [6] = 1, [7] = 0 });
+    }
+
+    [Fact]
+    public async Task Counts_each_priority_from_since_on_Async()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(s_start, "PRIORITY=3"),
+            FakeJournalEntry.At(s_start.AddMinutes(1), "PRIORITY=6"),
+            FakeJournalEntry.At(s_start.AddMinutes(2), "PRIORITY=6"),
+        ];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries));
+
+        var counts = await service.GetPriorityCounts(s_start.AddMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
+
+        counts.Should().Equal(new Dictionary<int, int> { [0] = 0, [1] = 0, [2] = 0, [3] = 0, [4] = 0, [5] = 0, [6] = 2, [7] = 0 });
+    }
+
+    [Fact]
+    public async Task Rejects_a_since_in_the_future_Async()
+    {
+        using var service = new JournalService(() => new FakeSystemdJournal([]));
+
+        var act = () => service.GetPriorityCounts(DateTimeOffset.Now.AddMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>().WithParameterName("since");
+    }
+
+    [Fact]
+    public async Task Throws_OperationCanceledException_when_cancelled_while_counting_Async()
+    {
+        using CancellationTokenSource cancellation = new();
+        List<FakeJournalEntry> entries = [FakeJournalEntry.At(s_start, "PRIORITY=3"), FakeJournalEntry.At(s_start.AddMinutes(1), "PRIORITY=3")];
+        using var service = new JournalService(() => new FakeSystemdJournal(entries) { Stepped = cancellation.Cancel });
+
+        var act = () => service.GetPriorityCounts(s_start, s_start.AddMinutes(2), cancellationToken: cancellation.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+}
+
 public class JournalService_GetPriorityHistogram
 {
     private static readonly DateTimeOffset s_start = new(2026, 3, 1, 8, 0, 0, TimeSpan.Zero);

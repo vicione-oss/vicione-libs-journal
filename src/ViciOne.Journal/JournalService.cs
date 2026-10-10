@@ -26,37 +26,28 @@ public sealed class JournalService : IJournalService
     public IReadOnlyDictionary<string, string> GetFieldDescriptions()
         => JournalFieldDescriptions.FieldDescriptions;
 
-    public async Task<IReadOnlyCollection<string>> GetFields(CancellationToken cancellationToken = default)
-        => await _accessControl.Run(() =>
-        {
-            using var journal = _openJournal();
-            return journal.EnumerateAvailableFields();
-        }, cancellationToken);
+    public Task<IReadOnlyCollection<string>> GetFields(CancellationToken cancellationToken = default)
+        => RunQuery<IReadOnlyCollection<string>>(journal => journal.EnumerateAvailableFields(), cancellationToken);
 
-    public async Task<IReadOnlyCollection<string>> GetFieldValues(string field, CancellationToken cancellationToken = default)
-        => await _accessControl.Run(() =>
-        {
-            using var journal = _openJournal();
-            return journal.EnumerateUniqueFieldValues(field);
-        }, cancellationToken);
+    public Task<IReadOnlyCollection<string>> GetFieldValues(string field, CancellationToken cancellationToken = default)
+        => RunQuery<IReadOnlyCollection<string>>(journal => journal.EnumerateUniqueFieldValues(field), cancellationToken);
 
     /// <param name="order">
     /// <c>asc</c> or <c>desc</c>, in any case. Either way, the result holds the first <paramref name="limit"/>
     /// entries from <paramref name="since"/>; <c>desc</c> returns them newest first.
     /// </param>
     public async Task<IReadOnlyCollection<IReadOnlyDictionary<string, string>>> GetLogs(DateTimeOffset since, string order = "desc", int limit = 100, string? filter = null, CancellationToken cancellationToken = default)
-        => await _accessControl.Run(() =>
+    {
+        if (limit < 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be a positiv value.");
+        var descending = order.Equals("desc", StringComparison.OrdinalIgnoreCase);
+        if (!descending && !order.Equals("asc", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Order must be 'asc' or 'desc'.", nameof(order));
+        if (since > DateTimeOffset.Now)
+            throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
+
+        return await RunQuery<IReadOnlyCollection<IReadOnlyDictionary<string, string>>>(journal =>
         {
-            if (limit < 0)
-                throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be a positiv value.");
-            var descending = order.Equals("desc", StringComparison.OrdinalIgnoreCase);
-            if (!descending && !order.Equals("asc", StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("Order must be 'asc' or 'desc'.", nameof(order));
-            if (since > DateTimeOffset.Now)
-                throw new ArgumentOutOfRangeException(nameof(since), "Since must be in the past.");
-
-            using var journal = _openJournal();
-
             try
             {
                 journal.SeekRealtime(since);
@@ -66,16 +57,7 @@ public sealed class JournalService : IJournalService
                 throw new InvalidOperationException($"Error setting journal pointer to {since}.", ex);
             }
 
-            try
-            {
-                if (!string.IsNullOrEmpty(filter))
-                    Filter.Apply(filter, journal);
-                //JournalFilterService.ApplyFilters(journal, filter, _systemdLogger);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
-            }
+            ApplyFilter(journal, filter);
 
             try
             {
@@ -94,6 +76,7 @@ public sealed class JournalService : IJournalService
                 throw new InvalidOperationException("Error reading journal entries.", ex);
             }
         }, cancellationToken);
+    }
 
     // TODO: proof if needed
     internal IReadOnlyCollection<IReadOnlyDictionary<string, string>> GetLogs(DateTimeOffset since, int pageSize, int pageNumber, string? filter = null)
@@ -116,15 +99,7 @@ public sealed class JournalService : IJournalService
             throw new InvalidOperationException($"Error setting journal pointer to {since}.", ex);
         }
 
-        try
-        {
-            if (!string.IsNullOrEmpty(filter))
-                Filter.Apply(filter, journal);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
-        }
+        ApplyFilter(journal, filter);
 
         try
         {
@@ -173,19 +148,9 @@ public sealed class JournalService : IJournalService
     {
         PriorityHistogramCounter.Validate(bucketEdges, groupBy);
 
-        return await _accessControl.Run(() =>
+        return await RunQuery(journal =>
         {
-            using var journal = _openJournal();
-
-            try
-            {
-                if (!string.IsNullOrEmpty(filter))
-                    Filter.Apply(filter, journal);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
-            }
+            ApplyFilter(journal, filter);
 
             try
             {
@@ -214,4 +179,24 @@ public sealed class JournalService : IJournalService
 
     public void Dispose()
         => _accessControl.Dispose();
+
+    private static void ApplyFilter(ISystemdJournal journal, string? filter)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(filter))
+                Filter.Apply(filter, journal);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Error applying filters. ({filter})", ex);
+        }
+    }
+
+    private Task<T> RunQuery<T>(Func<ISystemdJournal, T> query, CancellationToken cancellationToken)
+        => _accessControl.Run(() =>
+        {
+            using var journal = _openJournal();
+            return query(journal);
+        }, cancellationToken);
 }

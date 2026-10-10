@@ -127,6 +127,7 @@ public sealed class JournalFollowSession : IJournalFollowSession
         {
             _journalThread.Execute(j =>
             {
+                j.FlushMatches();
                 Filter.Apply(filter, j);
                 j.SeekTail();
             });

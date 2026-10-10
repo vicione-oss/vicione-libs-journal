@@ -82,4 +82,7 @@ internal static partial class NativeMethods
 
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_add_disjunction(IntPtr journal);
+
+    [LibraryImport(SYSTEMD_LIB)]
+    internal static partial void sd_journal_flush_matches(IntPtr journal);
 }

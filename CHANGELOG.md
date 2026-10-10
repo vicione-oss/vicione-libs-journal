@@ -15,6 +15,7 @@
 - Fix filter values in double quotes never matching; the quotes are removed and no longer required for values with spaces
 - Fix follow sessions missing entries from journal files created after they opened, such as after a rotation
 - Fix `IJournalFollowSession.Start(logCount)` delivering one recent entry less than requested
+- Fix `SetFilter` on generic and follow sessions combining the new filter with the previous one instead of replacing it
 
 ### Changed
 

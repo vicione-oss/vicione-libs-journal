@@ -293,6 +293,18 @@ internal sealed partial class SystemdJournal : ISystemdJournal
         }
     }
 
+    public void FlushMatches()
+    {
+        lock (_syncLock)
+        {
+            SafeNativeCall(handle =>
+            {
+                NativeMethods.sd_journal_flush_matches(handle);
+                return 0;
+            });
+        }
+    }
+
     /// <summary>
     /// Adds a match to the journal query. The match must be in the format 'FIELD=VALUE'.
     /// </summary>

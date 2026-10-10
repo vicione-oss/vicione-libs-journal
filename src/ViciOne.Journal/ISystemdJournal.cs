@@ -10,6 +10,7 @@ internal interface ISystemdJournal : IDisposable
 {
     void AddMatch(string match);
     void AddDisjunction();
+    void FlushMatches();
     void SeekHead();
     void SeekTail();
     void SeekRealtime(DateTimeOffset time);

@@ -46,6 +46,12 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
             _matchGroups.Add([]);
     }
 
+    public void FlushMatches()
+    {
+        _matchGroups.Clear();
+        _matchGroups.Add([]);
+    }
+
     public void SeekHead()
         => Seek(0, -1);
 

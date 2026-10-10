@@ -30,7 +30,11 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            _journalThread.Execute(j => Filter.Apply(filter, j));
+            _journalThread.Execute(j =>
+            {
+                j.FlushMatches();
+                Filter.Apply(filter, j);
+            });
             _positionSet = false;
         }
         catch (Exception ex)

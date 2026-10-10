@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text;
 using ViciOne.Journal;
 
 namespace Journal.Tests;
@@ -119,6 +120,15 @@ internal sealed class FakeSystemdJournal(List<FakeJournalEntry> entries, Concurr
     {
         while (newFileEntries is not null && newFileEntries.TryDequeue(out var entry))
             entries.Add(entry);
+    }
+
+    public ulong GetRealtimeUsec()
+        => (ulong)(CurrentEntry.Timestamp - DateTimeOffset.UnixEpoch).Ticks / 10;
+
+    public bool TryGetData(JournalField field, out ReadOnlySpan<byte> value)
+    {
+        value = CurrentEntry.Fields.TryGetValue(field.Name, out var text) ? Encoding.UTF8.GetBytes(text) : default;
+        return text is not null;
     }
 
     public Dictionary<int, int> GetPriorityCountsSince(DateTime since, CancellationToken cancellationToken = default)

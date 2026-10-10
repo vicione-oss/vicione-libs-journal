@@ -28,4 +28,13 @@ internal interface ISystemdJournal : IDisposable
     /// Picks up journal files that were created or rotated since the journal was opened.
     /// </summary>
     void ProcessChanges();
+
+    ulong GetRealtimeUsec();
+
+    /// <summary>
+    /// Reads a field of the current entry without copying it.
+    /// </summary>
+    /// <param name="value">The value after <c>FIELD=</c>. It is only valid until the next call on this journal.</param>
+    /// <returns><see langword="false"/> if the entry has no such field or it cannot be read.</returns>
+    bool TryGetData(JournalField field, out ReadOnlySpan<byte> value);
 }

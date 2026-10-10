@@ -37,6 +37,10 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int sd_journal_get_data(IntPtr journal, string field, out IntPtr data, out UIntPtr length);
 
+    // The field name must be NUL-terminated UTF-8.
+    [LibraryImport(SYSTEMD_LIB)]
+    internal static unsafe partial int sd_journal_get_data(IntPtr journal, byte* field, out IntPtr data, out UIntPtr length);
+
     // Resets the internal pointer for data retrieval of the current entry.
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     internal static partial void sd_journal_restart_data(IntPtr journal);

@@ -119,21 +119,16 @@ internal sealed partial class SystemdJournal : ISystemdJournal
     /// <returns>The result of the native call.</returns>
     private T SafeNativeCall<T>(Func<IntPtr, T> nativeCall)
     {
+        using var lease = LeaseHandle();
+        return nativeCall(lease.Handle);
+    }
+
+    private HandleLease LeaseHandle()
+    {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SystemdJournal), "The journal has already been disposed and cannot be used.");
 
-        var added = false;
-        try
-        {
-            _journalHandle.DangerousAddRef(ref added);
-            var handle = _journalHandle.DangerousGetHandle();
-            return nativeCall(handle);
-        }
-        finally
-        {
-            if (added)
-                _journalHandle.DangerousRelease();
-        }
+        return new(_journalHandle);
     }
 
     /// <summary>
@@ -642,24 +637,11 @@ internal sealed partial class SystemdJournal : ISystemdJournal
     {
         _logger?.LogGetRealtimeTimestamp();
 
-        lock (_syncLock)
-        {
-            ulong usec = 0;
-            var ret = SafeNativeCall(handle =>
-            {
-                var r = NativeMethods.sd_journal_get_realtime_usec(handle, out var result);
-                usec = result;
-                return r;
-            });
-            CheckNativeResult(ret, "sd_journal_get_realtime_usec");
+        var usec = GetRealtimeUsec();
+        if (usec > (ulong)DateTime.MaxValue.Ticks / 10)
+            throw new JournalException("The timestamp is too large and would cause an overflow.", -1);
 
-            if (usec > (ulong)DateTime.MaxValue.Ticks / 10)
-            {
-                throw new JournalException("The timestamp is too large and would cause an overflow.", -1);
-            }
-            DateTime epoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            return epoch.AddTicks((long)usec * 10);
-        }
+        return DateTime.UnixEpoch.AddTicks((long)usec * 10);
     }
 
     public void ProcessChanges()
@@ -670,6 +652,43 @@ internal sealed partial class SystemdJournal : ISystemdJournal
             var ret = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, 0));
             CheckNativeResult(ret, "sd_journal_wait");
         }
+    }
+
+    public ulong GetRealtimeUsec()
+    {
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            var ret = NativeMethods.sd_journal_get_realtime_usec(lease.Handle, out var usec);
+            CheckNativeResult(ret, "sd_journal_get_realtime_usec");
+            return usec;
+        }
+    }
+
+    public unsafe bool TryGetData(JournalField field, out ReadOnlySpan<byte> value)
+    {
+        int ret;
+        IntPtr data;
+        UIntPtr length;
+
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            fixed (byte* name = field.NativeName)
+                ret = NativeMethods.sd_journal_get_data(lease.Handle, name, out data, out length);
+        }
+
+        // Missing fields (-ENOENT) and unreadable entries are skipped alike; a corrupt entry must not
+        // count towards the reinitialization threshold in the middle of a walk.
+        if (ret < 0 || data == IntPtr.Zero)
+        {
+            value = default;
+            return false;
+        }
+
+        // The data has the form FIELD=value, and the prefix is as long as the NUL-terminated name.
+        value = new ReadOnlySpan<byte>(data.ToPointer(), (int)length)[field.NativeName.Length..];
+        return true;
     }
 
     /// <summary>
@@ -1056,4 +1075,26 @@ internal sealed partial class SystemdJournal : ISystemdJournal
 
     [GeneratedRegex(@"^(?!.*__)(?=.*[A-Z0-9])[A-Z0-9_]+$", RegexOptions.Compiled)]
     internal static partial Regex FieldRegex();
+
+    private ref struct HandleLease
+    {
+        private readonly SafeJournalHandle _handle;
+        private bool _added;
+
+        public HandleLease(SafeJournalHandle handle)
+        {
+            _handle = handle;
+            handle.DangerousAddRef(ref _added);
+        }
+
+        public readonly IntPtr Handle
+            => _handle.DangerousGetHandle();
+
+        public void Dispose()
+        {
+            if (_added)
+                _handle.DangerousRelease();
+            _added = false;
+        }
+    }
 }

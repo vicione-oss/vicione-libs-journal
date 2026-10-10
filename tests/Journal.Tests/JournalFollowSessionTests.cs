@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using AwesomeAssertions;
 using ViciOne.Journal;
 
@@ -329,5 +330,29 @@ public sealed class JournalFollowSession_FilteredEvents
             if (entry.TryGetValue("PRIORITY", out var priority))
                 priority.Should().BeOneOf("5", "6");
         });
+    }
+}
+
+public sealed class JournalFollowSession_SetFilter_Replacing
+{
+    [Fact]
+    public async Task Delivers_only_the_entries_of_the_last_filter_Async()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(1), "MESSAGE=a", "_SYSTEMD_UNIT=a.service"),
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(2), "MESSAGE=b", "_SYSTEMD_UNIT=b.service"),
+        ];
+        using var session = new JournalFollowSession(() => new FakeSystemdJournal(entries), TimeSpan.FromMilliseconds(250), () => { });
+        ConcurrentQueue<string> messages = [];
+        session.NewEntry += entry => messages.Enqueue(entry["MESSAGE"]);
+        session.SetFilter("_SYSTEMD_UNIT=a.service");
+
+        session.SetFilter("_SYSTEMD_UNIT=b.service");
+        session.Start(10);
+        await Task.Delay(TimeSpan.FromMilliseconds(750), TestContext.Current.CancellationToken);
+        await session.Stop();
+
+        messages.Should().Equal("b");
     }
 }

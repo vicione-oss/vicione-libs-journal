@@ -332,3 +332,23 @@ public sealed class JournalGenericSession_SeekRealTime
         act.Should().Throw<InvalidOperationException>().WithMessage("Error seeking journal realtime.");
     }
 }
+
+public sealed class JournalGenericSession_SetFilter_Replacing
+{
+    [Fact]
+    public void Reads_only_the_entries_of_the_last_filter()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(1), "MESSAGE=a", "_SYSTEMD_UNIT=a.service"),
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(2), "MESSAGE=b", "_SYSTEMD_UNIT=b.service"),
+        ];
+        using var session = new JournalGenericSession(() => new FakeSystemdJournal(entries), () => { });
+        session.SetFilter("_SYSTEMD_UNIT=a.service");
+
+        session.SetFilter("_SYSTEMD_UNIT=b.service");
+        session.SeekHead();
+
+        session.GetLogs(10).Select(l => l["MESSAGE"]).Should().Equal("b");
+    }
+}

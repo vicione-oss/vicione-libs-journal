@@ -66,9 +66,10 @@ public sealed class JournalFollowSession : IJournalFollowSession
                     NewEntry?.Invoke(entry);
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
-            // Normal cancellation, don't treat as error
+            // Stop and Dispose cancel before they release the journal thread, so a failure after that, such as
+            // handing work to the disposed thread, is part of shutting down and not an error of the session.
         }
         catch (Exception ex)
         {

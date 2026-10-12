@@ -16,6 +16,7 @@
 - Fix follow sessions missing entries from journal files created after they opened, such as after a rotation
 - Fix `IJournalFollowSession.Start(logCount)` delivering one recent entry less than requested
 - Fix `SetFilter` on generic and follow sessions combining the new filter with the previous one instead of replacing it
+- Fix follow sessions raising `Error` when they are stopped or disposed while reading new entries
 
 ### Changed
 

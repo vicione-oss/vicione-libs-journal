@@ -20,17 +20,17 @@ internal sealed class JournalThread : IDisposable
 
     private readonly Thread _thread;
     private readonly BlockingCollection<WorkItem> _workQueue;
-    private readonly JournalOpeningMode _openingMode;
+    private readonly Func<ISystemdJournal> _openJournal;
     private readonly ILogger<SystemdJournal>? _logger;
     private readonly TaskCompletionSource _initializationTcs;
 #pragma warning disable CA2213 // _journal is disposed in ThreadLoop's finally block on the dedicated thread
-    private SystemdJournal? _journal;
+    private ISystemdJournal? _journal;
 #pragma warning restore CA2213
     private int _disposed;
 
-    internal JournalThread(JournalOptions options, ILogger<SystemdJournal>? logger = null)
+    internal JournalThread(Func<ISystemdJournal> openJournal, ILogger<SystemdJournal>? logger = null)
     {
-        _openingMode = options.OpeningMode;
+        _openJournal = openJournal;
         _logger = logger;
         _workQueue = new BlockingCollection<WorkItem>();
         _initializationTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -63,7 +63,7 @@ internal sealed class JournalThread : IDisposable
         try
         {
             // Create journal on this dedicated thread
-            _journal = new SystemdJournal(_logger, _openingMode);
+            _journal = _openJournal();
             _initializationTcs.SetResult();
         }
         catch (Exception ex)
@@ -103,21 +103,10 @@ internal sealed class JournalThread : IDisposable
     /// </summary>
     /// <param name="action">The action to execute.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    internal void Execute(Action<SystemdJournal> action, CancellationToken cancellationToken = default)
+    internal void Execute(Action<ISystemdJournal> action, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
         var workItem = new ActionWorkItem(action);
-
-        try
-        {
-            _workQueue.Add(workItem, cancellationToken);
-        }
-        catch (InvalidOperationException) when (_workQueue.IsAddingCompleted)
-        {
-            throw new ObjectDisposedException(nameof(JournalThread), "The journal thread has been disposed.");
-        }
-
+        Enqueue(workItem, cancellationToken);
         workItem.Wait(cancellationToken);
     }
 
@@ -126,11 +115,27 @@ internal sealed class JournalThread : IDisposable
     /// </summary>
     /// <param name="func">The function to execute.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    internal T Execute<T>(Func<SystemdJournal, T> func, CancellationToken cancellationToken = default)
+    internal T Execute<T>(Func<ISystemdJournal, T> func, CancellationToken cancellationToken = default)
+    {
+        var workItem = new FuncWorkItem<T>(func);
+        Enqueue(workItem, cancellationToken);
+        return workItem.GetResult(cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a function on the dedicated journal thread without blocking the caller.
+    /// </summary>
+    /// <returns>A task that completes when the function has run; <paramref name="func"/> observes cancellation itself.</returns>
+    internal Task<T> ExecuteAsync<T>(Func<ISystemdJournal, T> func)
+    {
+        var workItem = new FuncWorkItem<T>(func);
+        Enqueue(workItem, CancellationToken.None);
+        return workItem.Task;
+    }
+
+    private void Enqueue(WorkItem workItem, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-        var workItem = new FuncWorkItem<T>(func);
 
         try
         {
@@ -140,8 +145,6 @@ internal sealed class JournalThread : IDisposable
         {
             throw new ObjectDisposedException(nameof(JournalThread), "The journal thread has been disposed.");
         }
-
-        return workItem.GetResult(cancellationToken);
     }
 
     public void Dispose()
@@ -162,22 +165,22 @@ internal sealed class JournalThread : IDisposable
 
     private abstract class WorkItem
     {
-        public abstract void Execute(SystemdJournal journal);
+        public abstract void Execute(ISystemdJournal journal);
         public abstract void SetException(Exception ex);
     }
 
     private sealed class ActionWorkItem : WorkItem
     {
-        private readonly Action<SystemdJournal> _action;
+        private readonly Action<ISystemdJournal> _action;
         private readonly TaskCompletionSource _tcs;
 
-        public ActionWorkItem(Action<SystemdJournal> action)
+        public ActionWorkItem(Action<ISystemdJournal> action)
         {
             _action = action;
             _tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        public override void Execute(SystemdJournal journal)
+        public override void Execute(ISystemdJournal journal)
         {
             _action(journal);
             _tcs.SetResult();
@@ -201,16 +204,16 @@ internal sealed class JournalThread : IDisposable
 
     private sealed class FuncWorkItem<T> : WorkItem
     {
-        private readonly Func<SystemdJournal, T> _func;
+        private readonly Func<ISystemdJournal, T> _func;
         private readonly TaskCompletionSource<T> _tcs;
 
-        public FuncWorkItem(Func<SystemdJournal, T> func)
+        public FuncWorkItem(Func<ISystemdJournal, T> func)
         {
             _func = func;
             _tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        public override void Execute(SystemdJournal journal)
+        public override void Execute(ISystemdJournal journal)
         {
             var result = _func(journal);
             _tcs.SetResult(result);
@@ -218,6 +221,9 @@ internal sealed class JournalThread : IDisposable
 
         public override void SetException(Exception ex)
             => _tcs.TrySetException(ex);
+
+        public Task<T> Task
+            => _tcs.Task;
 
         public T GetResult(CancellationToken cancellationToken)
         {

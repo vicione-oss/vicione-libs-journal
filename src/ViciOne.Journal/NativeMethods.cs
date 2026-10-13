@@ -12,6 +12,9 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_open(out IntPtr journal, int flags);
 
+    [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int sd_journal_open_directory(out IntPtr journal, string path, int flags);
+
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial void sd_journal_close(IntPtr journal);
 
@@ -34,8 +37,9 @@ internal static partial class NativeMethods
     internal static partial int sd_journal_seek_realtime_usec(IntPtr journal, ulong usec);
 
     // sd_journal_get_data returns a pointer to internal memory and should not be freed manually.
-    [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
-    internal static partial int sd_journal_get_data(IntPtr journal, string field, out IntPtr data, out UIntPtr length);
+    // The field name must be NUL-terminated UTF-8.
+    [LibraryImport(SYSTEMD_LIB)]
+    internal static unsafe partial int sd_journal_get_data(IntPtr journal, byte* field, out IntPtr data, out UIntPtr length);
 
     // Resets the internal pointer for data retrieval of the current entry.
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
@@ -48,11 +52,17 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_get_realtime_usec(IntPtr journal, out ulong usec);
 
+    [LibraryImport(SYSTEMD_LIB)]
+    internal static partial int sd_journal_get_cutoff_realtime_usec(IntPtr journal, out ulong from, out ulong to);
+
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     internal static partial int sd_journal_get_cursor(IntPtr journal, out IntPtr cursor);
 
     [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     internal static partial int sd_journal_seek_cursor(IntPtr journal, string cursor);
+
+    [LibraryImport(SYSTEMD_LIB, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int sd_journal_test_cursor(IntPtr journal, string cursor);
 
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_wait(IntPtr journal, ulong timeout);
@@ -76,10 +86,13 @@ internal static partial class NativeMethods
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_enumerate_unique(IntPtr journal, out IntPtr data, out UIntPtr length);
 
-    // Import free() from libc for freeing pointers (e.g. in GetCursor and EnumerateUniqueFieldValues).
+    // Frees the cursor string that sd_journal_get_cursor allocates.
     [LibraryImport(LIBC_LIB, SetLastError = false)]
     internal static partial void free(IntPtr ptr);
 
     [LibraryImport(SYSTEMD_LIB, SetLastError = true)]
     internal static partial int sd_journal_add_disjunction(IntPtr journal);
+
+    [LibraryImport(SYSTEMD_LIB)]
+    internal static partial void sd_journal_flush_matches(IntPtr journal);
 }

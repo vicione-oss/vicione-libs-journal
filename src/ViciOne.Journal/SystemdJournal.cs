@@ -4,11 +4,6 @@
 // Please ensure that instances of SystemdJournal (e.g., in JournalFieldsProvider and JournalFieldValuesProvider)
 // are always used within a using block or explicitly call Dispose().
 //
-// Conditional Compilation for GetCursor:
-// To test the correct variant of memory release, you can define the preprocessor symbol FREE_CURSOR
-// (e.g., in the project properties or with #define FREE_CURSOR at the beginning of the file). This allows you to
-// choose between the variants (with and without manual release).
-//
 // Journald Reinitialization:
 // In case of repeated (two consecutive) errors when calling native functions, an attempt is automatically made
 // to re-establish the connection to journald. In this case, a JournalException is thrown, indicating in its message
@@ -20,72 +15,15 @@
 // Ensure that Seri_logger is initialized (e.g., in your program startup) so that the _logger entries actually appear
 // in the desired output.
 
-// Memory Settings
+// Memory ownership (see sd-journal(3))
 //
-// **sd_journal_get_cursor (Flag: `FREE_CURSOR`):**
-// The documentation (and the source code of systemd) indicate that the pointer returned by `sd_journal_get_cursor`
-// points to an internal buffer. This buffer remains valid until the next journal call and should not be freed by 
-// the user.
-// 
-// **Setting:**
-// FREE_CURSOR = false` is correct.
-//
-// **sd_journal_enumerate_data (Flag: `FREE_ENUMERATE_DATA`)**
-// Again, this is a pointer to an internal buffer that is provided during the iteration over an entry's data. User
-// deallocation is not intended.
-//
-// **Setting:**
-// FREE_ENUMERATE_DATA = false` is correct.
-//
-// **sd_journal_get_data (Flag: `FREE_JOURNAL_GET_DATA`)**
-// The function `sd_journal_get_data` returns a pointer to internally managed data. There is no requirement to free
-// this pointer, as it is not allocated via `malloc()`.
-//
-// **Setting:**
-// FREE_JOURNAL_GET_DATA = false` is correct.
-//
-// **sd_journal_enumerate_available_fields (Flag: `FREE_AVAILABLE_FIELDS`)**
-// Similar to the other data query routines, the pointer returned by `sd_journal_enumerate_available_fields` points 
-// to internal memory and should not be freed.
-//
-// **Setting:**
-// FREE_AVAILABLE_FIELDS = false` is correct.
-//
-// **sd_journal_enumerate_unique (Flag: `FREE_UNIQUE_DATA`)**
-// Here, the behavior differs: In some systemd versions (and based on discussions in the community as well as 
-// implementations in other bindings, such as Go projects), the return value of `sd_journal_enumerate_unique` is 
-// indeed allocated with `malloc()`. This means that the caller—once they have copied the value into safe, managed
-// memory—must free this memory using `free()` to avoid memory leaks.
-//
-// **Setting:**
-// FREE_UNIQUE_DATA = true is appropriate.
-//
-//
-// Summary
-//
-// - **FREE_CURSOR = false**:  
-//   The cursor pointer belongs to the library and not to the user.
-// 
-// - **FREE_ENUMERATE_DATA = false**:  
-//   The data pointers from entry enumeration point to internal memory.
-// 
-// - **FREE_JOURNAL_GET_DATA = false**:  
-//   This also uses internal memory that does not need to be freed.
-// 
-// - **FREE_AVAILABLE_FIELDS = false**:  
-//   The available field names reside in an internal memory area and should not be freed.
-// 
-// - **FREE_UNIQUE_DATA = true**:  
-//   The pointers returned by `sd_journal_enumerate_unique` are (at least in common implementations) allocated using `malloc()` and must be freed by the caller using `free()`.
-// #define FREE_CURSOR
-// #define FREE_ENUMERATE_DATA
-// #define FREE_JOURNAL_GET_DATA
-// #define FREE_AVAILABLE_FIELDS
-// #define FREE_UNIQUE_DATA
+// sd_journal_get_cursor() returns a string allocated with malloc(), which the caller frees.
+// The data of sd_journal_get_data(), sd_journal_enumerate_data(), sd_journal_enumerate_fields() and
+// sd_journal_enumerate_unique() points into the journal's own memory: it is valid only until the next call
+// on the same journal and must not be freed.
 
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
@@ -95,7 +33,7 @@ namespace ViciOne.Journal;
 /// A convenient wrapper around the systemd sd-journal C API.
 /// Provides functions for opening/closing, filtering, navigating, and retrieving journal entries.
 /// </summary>
-internal sealed partial class SystemdJournal : IDisposable
+internal sealed partial class SystemdJournal : ISystemdJournal
 {
     private const int MAX_NATIVE_ERRORS = 2;
 
@@ -108,6 +46,7 @@ internal sealed partial class SystemdJournal : IDisposable
 
     // For automatic reinitialization.
     private readonly JournalOpeningMode _journalOpeningMode;
+    private readonly string? _directory;
     private int _nativeErrorCount;
 
     /// <summary>
@@ -119,39 +58,36 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <returns>The result of the native call.</returns>
     private T SafeNativeCall<T>(Func<IntPtr, T> nativeCall)
     {
+        using var lease = LeaseHandle();
+        return nativeCall(lease.Handle);
+    }
+
+    private HandleLease LeaseHandle()
+    {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SystemdJournal), "The journal has already been disposed and cannot be used.");
 
-        var added = false;
-        try
-        {
-            _journalHandle.DangerousAddRef(ref added);
-            var handle = _journalHandle.DangerousGetHandle();
-            return nativeCall(handle);
-        }
-        finally
-        {
-            if (added)
-                _journalHandle.DangerousRelease();
-        }
+        return new(_journalHandle);
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemdJournal"/> class with the specified flags.
     /// </summary>
     /// <param name="flags">Flags controlling which journal to open (default is LocalOnly).</param>
+    /// <param name="directory">A directory whose journal files to open instead; <paramref name="flags"/> do not apply to it.</param>
     /// <exception cref="ArgumentException">Thrown when an invalid flag is provided.</exception>
     /// <exception cref="JournalException">Thrown when opening the journal fails.</exception>
-    internal SystemdJournal(ILogger<SystemdJournal>? logger = null, JournalOpeningMode flags = JournalOpeningMode.LocalOnly)
+    internal SystemdJournal(ILogger<SystemdJournal>? logger = null, JournalOpeningMode flags = JournalOpeningMode.LocalOnly, string? directory = null)
     {
         _logger = logger;
         _journalOpeningMode = flags;
+        _directory = directory;
 
         // Ensure that the provided flags are valid.
         if (!Enum.IsDefined(flags))
             throw new ArgumentException("Invalid JournalFlags value.", nameof(flags));
 
-        var ret = NativeMethods.sd_journal_open(out var handle, (int)flags);
+        var ret = Open(out var handle);
 
         if (ret < 0 || handle == IntPtr.Zero)
             throw new JournalException($"sd_journal_open failed with error {ret}", ret);
@@ -209,7 +145,7 @@ internal sealed partial class SystemdJournal : IDisposable
             }
         }
 
-        var ret = NativeMethods.sd_journal_open(out var newHandle, (int)_journalOpeningMode);
+        var ret = Open(out var newHandle);
         if (ret < 0 || newHandle == IntPtr.Zero)
         {
             _logger?.LogFailedReinitializeJournal(ret);
@@ -220,6 +156,11 @@ internal sealed partial class SystemdJournal : IDisposable
         _logger?.LogJournalReinitialized();
     }
 
+    private int Open(out IntPtr handle)
+        => _directory is null
+            ? NativeMethods.sd_journal_open(out handle, (int)_journalOpeningMode)
+            : NativeMethods.sd_journal_open_directory(out handle, _directory, 0);
+
     /// <summary>
     /// Adds a match to the journal query. The match must be in the format 'FIELD=VALUE'.
     /// </summary>
@@ -228,8 +169,7 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <exception cref="JournalException"></exception>
     /// <remarks>
     /// The field name must consist of uppercase letters, digits, and underscores.
-    /// The value can be anything.
-    /// If the value contains spaces, it must be enclosed in quotes.
+    /// The value is matched exactly; one pair of surrounding double quotes is removed.
     /// </remarks>
     public void AddMatch(string match)
     {
@@ -262,13 +202,13 @@ internal sealed partial class SystemdJournal : IDisposable
         if (!FieldRegex().IsMatch(field))
             throw new ArgumentException($"Invalid field format: {field}. Only uppercase letters, digits, and underscores are allowed.", nameof(match));
 
-        // If the value contains spaces, it must be enclosed in quotes.
-        if (value.Contains(' ', StringComparison.Ordinal) && !(value.StartsWith('"') && value.EndsWith('"')))
-            throw new ArgumentException("Values containing spaces must be enclosed in quotes.", nameof(match));
+        // sd-journal compares the value byte by byte, so the quotes would otherwise have to be part of the entry.
+        if (value.Length >= 2 && value.StartsWith('"') && value.EndsWith('"'))
+            value = value[1..^1];
 
         lock (_syncLock)
         {
-            var matchBytes = Encoding.UTF8.GetBytes(match + "\0");
+            var matchBytes = Encoding.UTF8.GetBytes($"{field}={value}\0");
             var ret = SafeNativeCall(
                 handle => NativeMethods.sd_journal_add_match(
                     handle,
@@ -294,6 +234,18 @@ internal sealed partial class SystemdJournal : IDisposable
         }
     }
 
+    public void FlushMatches()
+    {
+        lock (_syncLock)
+        {
+            SafeNativeCall(handle =>
+            {
+                NativeMethods.sd_journal_flush_matches(handle);
+                return 0;
+            });
+        }
+    }
+
     /// <summary>
     /// Adds a match to the journal query. The match must be in the format 'FIELD=VALUE'.
     /// </summary>
@@ -303,8 +255,7 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <exception cref="JournalException">Thrown when adding the match fails.</exception>
     /// <remarks>
     /// The field name must consist of uppercase letters, digits, and underscores.
-    /// The value can be anything.
-    /// If the value contains spaces, it must be enclosed in quotes.
+    /// The value is matched exactly; one pair of surrounding double quotes is removed.
     /// </remarks>
     public void AddMatch(string field, string value)
         => AddMatch($"{field}={value}");
@@ -312,33 +263,15 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <summary>
     /// Seeks to the beginning of the journal.
     /// </summary>
-    /// <param name="timeout">
-    /// An optional timeout period to wait for the journal to become ready. The specified timeout is a <see cref="TimeSpan"/>
-    /// that is internally converted to microseconds. If the wait operation times out, a <see cref="JournalException"/> is thrown.
-    /// </param>
     /// <exception cref="JournalException">
-    /// Thrown if the underlying sd-journal_seek_head operation fails or if the operation times out.
+    /// Thrown if the underlying sd-journal_seek_head operation fails.
     /// </exception>
-    public void SeekHead(TimeSpan? timeout = null)
+    public void SeekHead()
     {
         _logger?.LogSeekHead();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                // Convert timeout to microseconds
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekHead operation timed out", -1);
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_seek_head);
             CheckNativeResult(ret, "sd_journal_seek_head");
         }
@@ -347,32 +280,13 @@ internal sealed partial class SystemdJournal : IDisposable
     /// <summary>
     /// Seeks to the end of the journal.
     /// </summary>
-    /// <param name="timeout"></param>
     /// <exception cref="JournalException"></exception>
-    /// <remarks>
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
-    /// </remarks>
-    public void SeekTail(TimeSpan? timeout = null)
+    public void SeekTail()
     {
         _logger?.LogSeekTail();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekTail operation timed out", -1);
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_seek_tail);
             CheckNativeResult(ret, "sd_journal_seek_tail");
         }
@@ -382,41 +296,17 @@ internal sealed partial class SystemdJournal : IDisposable
     /// Seeks to the specified timestamp in the journal.
     /// </summary>
     /// <param name="time">The timestamp to seek to.</param>
-    /// <param name="timeout">The maximum time to wait for the operation to complete.</param>
-    /// <exception cref="ArgumentException">Thrown when the timestamp is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when the timestamp is before 1970.</exception>
     /// <exception cref="JournalException">Thrown when seeking fails.</exception>
-    /// <remarks>
-    /// The timestamp must be in UTC and not before 1970.
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
-    /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public void SeekRealtime(DateTime time, TimeSpan? timeout = null)
+    public void SeekRealtime(DateTimeOffset time)
     {
         _logger?.LogSeekRealtime(time);
 
-        var utcTime = ValidateAndConvertToUtc(time);
-        DateTime epoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        var usec = (ulong)((utcTime - epoch).TotalMilliseconds * 1000);
-        if (usec > (ulong)DateTime.MaxValue.Ticks)
-            throw new ArgumentException("The timestamp is too large and would cause an overflow.", nameof(time));
+        var usec = JournalTime.ToRealtimeUsec(time);
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekRealtime operation timed out", -1);
-            }
             var ret = SafeNativeCall(handle => NativeMethods.sd_journal_seek_realtime_usec(handle, usec));
             CheckNativeResult(ret, "sd_journal_seek_realtime_usec");
         }
@@ -426,7 +316,6 @@ internal sealed partial class SystemdJournal : IDisposable
     /// Seeks to the specified cursor in the journal.
     /// </summary>
     /// <param name="cursor">The cursor to seek to.</param>
-    /// <param name="timeout">The maximum time to wait for the operation to complete.</param>
     /// <exception cref="ArgumentException">Thrown when the cursor is invalid.</exception>
     /// <exception cref="JournalException">Thrown when seeking fails.</exception>
     /// <remarks>
@@ -434,12 +323,9 @@ internal sealed partial class SystemdJournal : IDisposable
     /// The cursor must not contain null characters.
     /// The cursor must not exceed 512 characters.
     /// The cursor must not contain special characters like '!@#$%^&*()[]{}<>'
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
     /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public void SeekCursor(string cursor, TimeSpan? timeout = null)
+    public void SeekCursor(string cursor)
     {
         _logger?.LogSeekCursor(cursor);
 
@@ -456,70 +342,45 @@ internal sealed partial class SystemdJournal : IDisposable
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_wait(
-                        handle,
-                        timeoutUsec
-                    )
-                );
-                if (waitRet == 0)
-                    throw new JournalException("SeekCursor operation timed out", -1);
-            }
-
             var ret = SafeNativeCall(handle => NativeMethods.sd_journal_seek_cursor(handle, cursor));
             CheckNativeResult(ret, "sd_journal_seek_cursor");
+        }
+    }
+
+    public bool TestCursor(string cursor)
+    {
+        lock (_syncLock)
+        {
+            var ret = SafeNativeCall(handle => NativeMethods.sd_journal_test_cursor(handle, cursor));
+            CheckNativeResult(ret, "sd_journal_test_cursor");
+            return ret > 0;
         }
     }
 
     /// <summary>
     /// Advances to the next journal entry.
     /// </summary>
-    /// <param name="timeout">The maximum time to wait for the operation to complete.</param>
     /// <returns>True if the operation was successful and the cursor was advanced; otherwise, false.</returns>
     /// <exception cref="JournalException">Thrown when advancing the cursor fails.</exception>
-    /// <remarks>
-    /// The timeout parameter is optional and specifies the maximum time to wait for the operation to complete.
-    /// The recommended timeout is 500 milliseconds.
-    /// If the operation times out, a JournalException is thrown with an error code of -1.
-    /// </remarks>
     /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public bool Next(TimeSpan? timeout = null)
+    public bool Next()
     {
         _logger?.LogNextCalled();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, timeoutUsec));
-                if (waitRet == 0)
-                    return false;
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_next);
             CheckNativeResult(ret, "sd_journal_next");
             return ret > 0;
         }
     }
 
-    public bool Previous(TimeSpan? timeout = null)
+    public bool Previous()
     {
         _logger?.LogPreviousCalled();
 
         lock (_syncLock)
         {
-            if (timeout.HasValue)
-            {
-                var timeoutUsec = (ulong)timeout.Value.TotalMilliseconds * 1000;
-                var waitRet = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, timeoutUsec));
-                if (waitRet == 0)
-                    return false;
-            }
-
             var ret = SafeNativeCall(NativeMethods.sd_journal_previous);
             CheckNativeResult(ret, "sd_journal_previous");
             return ret > 0;
@@ -732,24 +593,104 @@ internal sealed partial class SystemdJournal : IDisposable
     {
         _logger?.LogGetRealtimeTimestamp();
 
+        var usec = GetRealtimeUsec();
+        if (usec > (ulong)DateTime.MaxValue.Ticks / 10)
+            throw new JournalException("The timestamp is too large and would cause an overflow.", -1);
+
+        return DateTime.UnixEpoch.AddTicks((long)usec * 10);
+    }
+
+    public void ProcessChanges()
+    {
+        // A zero timeout only processes pending inotify events. The first call also sets up the watches.
         lock (_syncLock)
         {
-            ulong usec = 0;
-            var ret = SafeNativeCall(handle =>
-            {
-                var r = NativeMethods.sd_journal_get_realtime_usec(handle, out var result);
-                usec = result;
-                return r;
-            });
-            CheckNativeResult(ret, "sd_journal_get_realtime_usec");
-
-            if (usec > (ulong)DateTime.MaxValue.Ticks / 10)
-            {
-                throw new JournalException("The timestamp is too large and would cause an overflow.", -1);
-            }
-            DateTime epoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            return epoch.AddTicks((long)usec * 10);
+            var ret = SafeNativeCall(handle => NativeMethods.sd_journal_wait(handle, 0));
+            CheckNativeResult(ret, "sd_journal_wait");
         }
+    }
+
+    public ulong GetRealtimeUsec()
+    {
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            var ret = NativeMethods.sd_journal_get_realtime_usec(lease.Handle, out var usec);
+            CheckNativeResult(ret, "sd_journal_get_realtime_usec");
+            return usec;
+        }
+    }
+
+    public JournalTimeRange? GetTimeRange()
+    {
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            var ret = NativeMethods.sd_journal_get_cutoff_realtime_usec(lease.Handle, out var oldest, out var newest);
+            CheckNativeResult(ret, "sd_journal_get_cutoff_realtime_usec");
+
+            return ret == 0 ? null : new(JournalTime.FromRealtimeUsec(oldest), JournalTime.FromRealtimeUsec(newest));
+        }
+    }
+
+    public unsafe bool TryGetData(JournalField field, out ReadOnlySpan<byte> value)
+    {
+        int ret;
+        IntPtr data;
+        UIntPtr length;
+
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            fixed (byte* name = field.NativeName)
+                ret = NativeMethods.sd_journal_get_data(lease.Handle, name, out data, out length);
+        }
+
+        // Missing fields (-ENOENT) and unreadable entries are skipped alike; a corrupt entry must not
+        // count towards the reinitialization threshold in the middle of a walk.
+        if (ret < 0 || data == IntPtr.Zero)
+        {
+            value = default;
+            return false;
+        }
+
+        // The data has the form FIELD=value, and the prefix is as long as the NUL-terminated name.
+        value = new ReadOnlySpan<byte>(data.ToPointer(), (int)length)[field.NativeName.Length..];
+        return true;
+    }
+
+    public void RestartData()
+    {
+        lock (_syncLock)
+        {
+            SafeNativeCall(handle =>
+            {
+                NativeMethods.sd_journal_restart_data(handle);
+                return 0;
+            });
+        }
+    }
+
+    public unsafe bool TryEnumerateData(out ReadOnlySpan<byte> data)
+    {
+        int ret;
+        IntPtr pointer;
+        UIntPtr length;
+
+        lock (_syncLock)
+        {
+            using var lease = LeaseHandle();
+            ret = NativeMethods.sd_journal_enumerate_data(lease.Handle, out pointer, out length);
+        }
+
+        if (ret < 0)
+        {
+            _logger?.LogEnumerateDataFailed(ret);
+            throw new JournalException("sd_journal_enumerate_data failed", ret);
+        }
+
+        data = ret == 0 || pointer == IntPtr.Zero ? default : new ReadOnlySpan<byte>(pointer.ToPointer(), (int)length);
+        return ret > 0 && pointer != IntPtr.Zero;
     }
 
     /// <summary>
@@ -890,186 +831,6 @@ internal sealed partial class SystemdJournal : IDisposable
     }
 
     /// <summary>
-    /// Retrieves the count of journal entries grouped by priority since a specific timestamp.
-    /// </summary>
-    /// <param name="since">The timestamp (in UTC) from which to count entries.</param>
-    /// <param name="cancellationToken">A token to observe for cancellation requests.</param>
-    /// <returns>
-    /// A dictionary where the keys represent priority levels (0–7) and the values represent the count of occurrences.
-    /// </returns>
-    /// <exception cref="ArgumentException">
-    /// Thrown when the timestamp is invalid (must be in UTC and not before 1970).
-    /// </exception>
-    /// <exception cref="JournalException">Thrown when an error occurs while counting the entries.</exception>
-    /// <exception cref="OperationCanceledException">Thrown when the operation is canceled.</exception>
-    /// <remarks>
-    /// The timestamp must be in UTC format and not earlier than January 1, 1970.
-    /// Journal entries are counted only if they contain a `_PRIORITY` field with a valid priority level (0–7).
-    /// </remarks>
-    /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public Dictionary<int, int> GetPriorityCountsSince(DateTime since, CancellationToken cancellationToken = default)
-    {
-        _logger?.LogGetPriorityCountsSince(since);
-
-        lock (_syncLock)
-        {
-            Dictionary<int, int> priorityCounts = new()
-            {
-                { 0, 0 },
-                { 1, 0 },
-                { 2, 0 },
-                { 3, 0 },
-                { 4, 0 },
-                { 5, 0 },
-                { 6, 0 },
-                { 7, 0 },
-            };
-
-            var utcSince = ValidateAndConvertToUtc(since, maxTime: DateTime.UtcNow);
-
-            SeekHead();
-            SeekRealtime(utcSince);
-
-            while (Next())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var dataPtr = IntPtr.Zero;
-                var length = UIntPtr.Zero;
-                var ret = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_get_data(
-                        handle,
-                        "PRIORITY",
-                        out dataPtr,
-                        out length
-                    )
-                );
-                if (ret < 0)
-                {
-                    // Ignore errors as the entry might not have a _PRIORITY field.
-                    continue;
-                }
-                if (dataPtr == IntPtr.Zero || length == UIntPtr.Zero)
-                    continue;
-
-                // Read the data as a string (removing the trailing null character)
-                var data = Marshal.PtrToStringUTF8(dataPtr, (int)length)?.Trim() ?? string.Empty;
-                var equalIndex = data.IndexOf('=', StringComparison.Ordinal);
-                if (equalIndex >= 0 && equalIndex < data.Length - 1)
-                {
-                    var priorityStr = data[(equalIndex + 1)..];
-                    if (int.TryParse(priorityStr, out var priority))
-                    {
-                        if (priority is < 0 or > 7)
-                            continue;
-                        // TODO: log if priority is unknown
-                        priorityCounts[priority]++;
-                    }
-                }
-            }
-
-            return priorityCounts;
-        }
-    }
-
-    /// <summary>
-    /// Retrieves the counts of journal entries grouped by _PRIORITY within a specified time interval.
-    /// Only entries with a realtime timestamp between <paramref name="start"/> (inclusive)
-    /// and <paramref name="end"/> (exclusive) are processed.
-    /// </summary>
-    /// <param name="start">The start timestamp (inclusive) of the interval, in UTC or local time.</param>
-    /// <param name="end">The end timestamp (exclusive) of the interval, in UTC or local time.</param>
-    /// <param name="cancellationToken">A token to observe for cancellation requests.</param>
-    /// <returns>
-    /// A dictionary where the keys represent priority levels (0–7) and the values represent the count of occurrences.
-    /// </returns>
-    /// <exception cref="ArgumentException">
-    /// Thrown if <paramref name="start"/> is after <paramref name="end"/> or if the provided timestamps are invalid.
-    /// </exception>
-    /// <exception cref="JournalException">Thrown if native calls fail while accessing journal data.</exception>
-    /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
-    /// <remarks>
-    /// - The provided timestamps are automatically converted to UTC if necessary.
-    /// - The timestamp range must be valid: <paramref name="start"/> must be before <paramref name="end"/>.
-    /// - The journal entries are filtered based on their _PRIORITY field, which must be an integer between 0 and 7.
-    /// - Entries without a _PRIORITY field or with invalid values are ignored.
-    /// </remarks>
-    /// <seealso cref="MAX_NATIVE_ERRORS"/>
-    public Dictionary<int, int> GetPriorityCountsBetween(DateTime start, DateTime end, CancellationToken cancellationToken = default)
-    {
-        _logger?.LogGetPriorityCountsBetween(start, end);
-
-        // Convert times to UTC for consistent comparisons.
-        var utcStart = ValidateAndConvertToUtc(start);
-        var utcEnd = ValidateAndConvertToUtc(end);
-
-        if (utcStart >= utcEnd)
-            throw new ArgumentException("Start timestamp must be earlier than end timestamp.");
-
-        Dictionary<int, int> priorityCounts = [];
-
-        lock (_syncLock)
-        {
-            // Reset the internal cursor and position it to the start time.
-            SeekHead();
-            SeekRealtime(utcStart);
-
-            // Iterate over all entries from the start time.
-            while (Next())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                // Retrieve the timestamp of the current entry.
-                var entryTime = GetRealtimeTimestamp();
-                if (entryTime >= utcEnd)
-                {
-                    // End the iteration as soon as the entry is outside the desired time window.
-                    break;
-                }
-
-                // Attempt to retrieve the _PRIORITY field.
-                var dataPtr = IntPtr.Zero;
-                var length = UIntPtr.Zero;
-                var ret = SafeNativeCall(
-                    handle => NativeMethods.sd_journal_get_data(
-                        handle,
-                        "PRIORITY",
-                        out dataPtr,
-                        out length
-                    )
-                );
-                if (ret < 0)
-                {
-                    // If the field is missing or an error occurs, skip this entry.
-                    continue;
-                }
-                if (dataPtr == IntPtr.Zero || length == UIntPtr.Zero)
-                    continue;
-
-                // The returned string has the format "_PRIORITY=<value>\0"
-                var data = Marshal.PtrToStringUTF8(dataPtr, (int)length)?.Trim() ?? string.Empty;
-
-                var equalIndex = data.IndexOf('=', StringComparison.Ordinal);
-                if (equalIndex >= 0 && equalIndex < data.Length - 1)
-                {
-                    var priorityStr = data[(equalIndex + 1)..];
-                    if (int.TryParse(priorityStr, out var priority))
-                    {
-                        // Priority values should be in the range 0 to 7.
-                        if (priority is < 0 or > 7)
-                            continue;
-                        // TODO: log if priority is unknown
-                        priorityCounts[priority]++;
-                    }
-                }
-            }
-        }
-
-        _logger?.LogGetPriorityCountsBetweenFinished(JsonSerializer.Serialize(priorityCounts));
-        return priorityCounts;
-    }
-
-    /// <summary>
     /// Checks the result of a native call. If an error occurs, it increments the native error count
     /// and, if a threshold is reached, reinitializes the journal connection.
     /// </summary>
@@ -1102,38 +863,28 @@ internal sealed partial class SystemdJournal : IDisposable
         return ret;
     }
 
-    /// <summary>
-    /// Converts a given <see cref="DateTime"/> value to UTC and ensures it falls within specified boundaries.
-    /// </summary>
-    /// <param name="time">The date and time value to validate and convert.</param>
-    /// <param name="minTime">
-    /// The minimum allowed timestamp. Defaults to Unix Epoch (1970-01-01T00:00:00Z) if not specified.
-    /// </param>
-    /// <param name="maxTime">
-    /// The maximum allowed timestamp. Defaults to the current UTC time plus 10 years if not specified.
-    /// </param>
-    /// <returns>The validated <see cref="DateTime"/> value in UTC format.</returns>
-    /// <exception cref="ArgumentException">
-    /// Thrown if the provided <paramref name="time"/> is earlier than <paramref name="minTime"/> 
-    /// or later than <paramref name="maxTime"/>.
-    /// </exception>
-    private static DateTime ValidateAndConvertToUtc(DateTime time, DateTime? minTime = null, DateTime? maxTime = null)
-    {
-        DateTime epoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        minTime ??= epoch;
-        maxTime ??= DateTime.UtcNow.AddYears(10);
-
-        var utcTime = time.Kind == DateTimeKind.Utc ? time : time.ToUniversalTime();
-
-        if (utcTime < minTime.Value)
-            throw new ArgumentException($"Timestamp {utcTime:o} is before the minimum allowed time {minTime:o}.", nameof(time));
-
-        if (utcTime > maxTime.Value)
-            throw new ArgumentException($"Timestamp {utcTime:o} exceeds the maximum allowed time {maxTime:o}.", nameof(time));
-
-        return utcTime;
-    }
-
     [GeneratedRegex(@"^(?!.*__)(?=.*[A-Z0-9])[A-Z0-9_]+$", RegexOptions.Compiled)]
     internal static partial Regex FieldRegex();
+
+    private ref struct HandleLease
+    {
+        private readonly SafeJournalHandle _handle;
+        private bool _added;
+
+        public HandleLease(SafeJournalHandle handle)
+        {
+            _handle = handle;
+            handle.DangerousAddRef(ref _added);
+        }
+
+        public readonly IntPtr Handle
+            => _handle.DangerousGetHandle();
+
+        public void Dispose()
+        {
+            if (_added)
+                _handle.DangerousRelease();
+            _added = false;
+        }
+    }
 }

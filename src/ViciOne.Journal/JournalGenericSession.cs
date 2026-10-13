@@ -9,9 +9,9 @@ public sealed class JournalGenericSession : IJournalGenericSession
 
     private bool _positionSet;
 
-    internal JournalGenericSession(JournalOptions options, Action onDispose, ILogger<SystemdJournal>? logger = null)
+    internal JournalGenericSession(Func<ISystemdJournal> openJournal, Action onDispose, ILogger<SystemdJournal>? logger = null)
     {
-        _journalThread = new JournalThread(options, logger);
+        _journalThread = new JournalThread(openJournal, logger);
         _onDispose = onDispose;
 
         try
@@ -30,7 +30,11 @@ public sealed class JournalGenericSession : IJournalGenericSession
     {
         try
         {
-            _journalThread.Execute(j => Filter.Apply(filter, j));
+            _journalThread.Execute(j =>
+            {
+                j.FlushMatches();
+                Filter.Apply(filter, j);
+            });
             _positionSet = false;
         }
         catch (Exception ex)
@@ -65,7 +69,11 @@ public sealed class JournalGenericSession : IJournalGenericSession
         }
     }
 
+    /// <param name="timestamp">The time to seek to; <see cref="DateTimeKind.Unspecified"/> is read as local time.</param>
     public void SeekRealTime(DateTime timestamp)
+        => SeekRealTime(new DateTimeOffset(timestamp.ToUniversalTime()));
+
+    public void SeekRealTime(DateTimeOffset timestamp)
     {
         try
         {
@@ -104,6 +112,15 @@ public sealed class JournalGenericSession : IJournalGenericSession
     }
 
     public IEnumerable<IReadOnlyDictionary<string, string>> GetLogs(int size, bool forward = true, bool skipFirst = false)
+        => Read<IReadOnlyDictionary<string, string>>(size, forward, skipFirst, j => j.GetCurrentEntry());
+
+    /// <summary>
+    /// Reads only the given fields of the next entries, which is much cheaper than <see cref="GetLogs"/>.
+    /// </summary>
+    public IEnumerable<JournalRecord> GetRecords(JournalFieldSet fields, int size, bool forward = true, bool skipFirst = false)
+        => Read(size, forward, skipFirst, j => JournalRecordReader.Read(j, fields));
+
+    private List<T> Read<T>(int size, bool forward, bool skipFirst, Func<ISystemdJournal, T> readEntry)
     {
         if (size < 1)
             throw new ArgumentOutOfRangeException(nameof(size), "Size must be greater than 0.");
@@ -112,28 +129,19 @@ public sealed class JournalGenericSession : IJournalGenericSession
             throw new InvalidOperationException("Position not set. Seek a position before reading.");
 
         // Execute the entire enumeration on the dedicated thread and return results
-        var results = _journalThread.Execute(j =>
+        return _journalThread.Execute(j =>
         {
-            var list = new List<IReadOnlyDictionary<string, string>>(size);
-            var count = 0;
-            Func<bool> next = forward ? () => j.Next() : () => j.Previous();
+            var list = new List<T>(size);
+            Func<bool> next = forward ? j.Next : j.Previous;
 
             if (skipFirst)
                 next();
 
-            while (count < size && next())
-            {
-                var entry = j.GetCurrentEntry();
-                if (entry is null)
-                    break;
-                list.Add(entry);
-                count++;
-            }
+            while (list.Count < size && next())
+                list.Add(readEntry(j));
 
             return list;
         });
-
-        return results;
     }
 
     public void Dispose()

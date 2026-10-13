@@ -47,6 +47,9 @@ ViciOne.Journal consists of three NuGet packages:
 - **JournalGenericSession** - Flexible session with full seek/filter control
 - **JournalFollowSession** - Real-time log following (like `tail -f`)
 - **JournalLookBehindSession** - Optimized for reading historical logs
+- **JournalRecordFollowSession** - Real-time following that delivers projected records in batches
+- **JournalHistogram** - Entry counts per time bucket, priority and group from `GetPriorityHistogram`
+- **JournalPage** / **JournalRecord** - Pages of projected entries from `ReadPage`, read only for the fields of a `JournalFieldSet`
 
 ### Writing (ViciOne.Journal.Logging)
 
@@ -74,13 +77,14 @@ A `SafeJournalHandle` ensures proper cleanup of native resources.
 
 ## Thread Safety
 
-- **AccessControl** limits concurrent journal access (default: 5)
+- **AccessControl** limits open sessions (`MaxSessions`, default 5) and running queries (`MaxConcurrentQueries`, default 4) separately and fails fast with a `JournalBusyException`
 - Each session has its own journal handle
+- One-shot queries run on a pool of journals that stay open between queries, each on its own thread, because opening a journal maps all of its files
 - Sessions should not be shared across threads
 
 ## Memory Management
 
-Most journal API functions return pointers to internal buffers that should **not** be freed. The exception is `sd_journal_enumerate_unique`, which returns malloc'd memory that must be freed.
+Most journal API functions return pointers into the journal's own memory, valid only until the next call on the same journal, that must **not** be freed. The exception is `sd_journal_get_cursor`, which returns a string allocated with `malloc()` that the caller frees.
 
 ## Logging Pipeline
 

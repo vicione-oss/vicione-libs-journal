@@ -31,7 +31,8 @@ FIELD=value
 
 1. Field names must match the regex pattern: `^[A-Z0-9_]+$`
 2. Field names cannot start with `_` when adding custom fields (underscore prefix is reserved for trusted journal fields)
-3. Values containing spaces must be enclosed in quotes
+3. Values are matched exactly; surrounding double quotes are optional and removed
+4. `,` and `+` always separate matches, even inside quotes, so a value cannot contain them
 4. Filters are case-sensitive
 
 ---
@@ -61,7 +62,8 @@ var logs = await journalService.GetLogs(
 
 ### Values with Spaces
 
-Enclose values containing spaces in quotes:
+Values may contain spaces. Surrounding double quotes are optional, but they do not protect `,` or `+`: both
+always separate matches, so a value cannot contain them.
 
 ```csharp
 var logs = await journalService.GetLogs(
@@ -73,9 +75,21 @@ var logs = await journalService.GetLogs(
 
 ## Combining Filters
 
+### How sd-journal combines matches
+
+A filter is a list of groups separated by `+`, and each group is a list of matches separated by `,`. sd-journal then
+combines them like this:
+
+- Within a group, matches on **different** fields must all match (AND).
+- Within a group, matches on the **same** field are alternatives (OR).
+- An entry is included if **any** group matches (OR).
+
+There is no way to AND two groups, so `A=1+A=2,B=3` means `A=1 OR (A=2 AND B=3)`, not `(A=1 OR A=2) AND B=3`.
+To express the latter, put both values of `A` into the same group: `A=1,A=2,B=3`.
+
 ### AND Logic (Comma Separator)
 
-Use `,` to combine filters with AND logic. All conditions must match:
+Use `,` to combine matches on different fields with AND logic. All conditions must match:
 
 ```csharp
 // Priority 3 (error) AND from nginx
@@ -107,11 +121,16 @@ var logs = await journalService.GetLogs(
 
 ### Combining AND and OR
 
-You can combine both operators. AND (`,`) and OR (`+`) are evaluated based on the sequence:
+To restrict several fields to several values each, list all values in one group, because matches on the same field
+are alternatives:
 
 ```csharp
-// (Priority 3 OR Priority 4) AND from specific host
-// Note: The logic follows the pattern where + creates disjunctions
+// (Priority 3 OR Priority 4) AND from a specific host
+var logs = await journalService.GetLogs(
+    since: DateTimeOffset.Now.AddHours(-1),
+    filter: "PRIORITY=3,PRIORITY=4,_HOSTNAME=server1");
+
+// Priority 3 OR (Priority 4 AND from a specific host)
 var logs = await journalService.GetLogs(
     since: DateTimeOffset.Now.AddHours(-1),
     filter: "PRIORITY=3+PRIORITY=4,_HOSTNAME=server1");
@@ -272,7 +291,7 @@ var logs = await journalService.GetLogs(
 // Web stack (nginx + php-fpm) errors and warnings
 var logs = await journalService.GetLogs(
     since: DateTimeOffset.Now.AddHours(-1),
-    filter: "SYSLOG_IDENTIFIER=nginx+SYSLOG_IDENTIFIER=php-fpm,PRIORITY=3+PRIORITY=4");
+    filter: "SYSLOG_IDENTIFIER=nginx,SYSLOG_IDENTIFIER=php-fpm,PRIORITY=3,PRIORITY=4");
 ```
 
 ### Systemd Service Monitoring

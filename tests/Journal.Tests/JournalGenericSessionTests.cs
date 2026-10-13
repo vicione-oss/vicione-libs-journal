@@ -8,7 +8,7 @@ namespace Journal.Tests;
 public sealed class JournalGenericSession_
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void Can_create_generic_session()
@@ -85,7 +85,7 @@ public sealed class JournalGenericSession_
 public sealed class JournalGenericSession_GetCursor
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void GetCursor_returns_valid_cursor_string()
@@ -124,7 +124,7 @@ public sealed class JournalGenericSession_GetCursor
 public sealed class JournalGenericSession_SetFilter
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void SetFilter_filters_logs_by_priority()
@@ -187,7 +187,7 @@ public sealed class JournalGenericSession_SetFilter
 public sealed class JournalGenericSession_GetLogs
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     public void Returns_entries_with_expected_fields()
@@ -276,7 +276,7 @@ public sealed class JournalGenericSession_GetLogs
 public sealed class JournalGenericSession_Dispose
 {
     private static JournalGenericSession CreateSession()
-        => new(new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly }, () => { });
+        => new(() => new SystemdJournal(), () => { });
 
     [Fact]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
@@ -311,11 +311,135 @@ public sealed class JournalGenericSession_Dispose
     {
         var callbackInvoked = false;
         var session = new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => callbackInvoked = true);
 
         session.Dispose();
 
         callbackInvoked.Should().BeTrue();
+    }
+}
+
+public sealed class JournalGenericSession_GetRecords
+{
+    private static readonly DateTimeOffset s_start = new(2026, 2, 1, 6, 0, 0, TimeSpan.Zero);
+    private static readonly JournalFieldSet s_fields = new("MESSAGE", "_SYSTEMD_UNIT");
+
+    private readonly List<FakeJournalEntry> _entries =
+    [
+        FakeJournalEntry.At(s_start, "MESSAGE=first", "PRIORITY=6", "_SYSTEMD_UNIT=a.service", "_PID=1"),
+        FakeJournalEntry.At(s_start.AddSeconds(1), "MESSAGE=second", "PRIORITY=3"),
+        FakeJournalEntry.At(s_start.AddSeconds(2), "MESSAGE=third"),
+    ];
+
+    private JournalGenericSession CreateSession()
+        => new(() => new FakeSystemdJournal(_entries), () => { });
+
+    [Fact]
+    public void Reads_the_time_cursor_priority_and_requested_fields()
+    {
+        using var session = CreateSession();
+        session.SeekHead();
+
+        var record = session.GetRecords(s_fields, 1).Single();
+
+        record.Timestamp.Should().Be(s_start);
+        record.Cursor.Should().Be(_entries[0].Cursor);
+        record.Priority.Should().Be(6);
+        record["MESSAGE"].Should().Be("first");
+        record["_SYSTEMD_UNIT"].Should().Be("a.service");
+    }
+
+    [Fact]
+    public void Returns_null_for_fields_and_priority_the_entry_does_not_have()
+    {
+        using var session = CreateSession();
+        session.SeekTail();
+
+        var record = session.GetRecords(s_fields, 1, forward: false).Single();
+
+        record.Priority.Should().BeNull();
+        record["_SYSTEMD_UNIT"].Should().BeNull();
+    }
+
+    [Fact]
+    public void Rejects_a_field_outside_the_field_set()
+    {
+        using var session = CreateSession();
+        session.SeekHead();
+        var record = session.GetRecords(s_fields, 1).Single();
+
+        var act = () => record["_PID"];
+
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Continues_after_a_cursor_when_skipping_the_first_entry()
+    {
+        using var session = CreateSession();
+        session.SeekCursor(_entries[0].Cursor);
+
+        var records = session.GetRecords(s_fields, 5, skipFirst: true);
+
+        records.Select(r => r["MESSAGE"]).Should().Equal("second", "third");
+    }
+}
+
+[Trait("Category", "Integration")]
+public sealed class JournalGenericSession_GetRecords_SystemJournal
+{
+    [Fact]
+    public void Reads_the_same_values_as_the_full_entries()
+    {
+        JournalFieldSet fields = new("MESSAGE", "_SYSTEMD_UNIT", "SYSLOG_IDENTIFIER", "_PID");
+        using var session = new JournalGenericSession(() => new SystemdJournal(), () => { });
+        session.SeekTail();
+        var records = session.GetRecords(fields, 50, forward: false).ToList();
+        session.SeekTail();
+
+        var entries = session.GetLogs(50, forward: false).ToList();
+
+        records.Should().HaveCount(entries.Count).And.NotBeEmpty();
+        for (var i = 0; i < entries.Count; i++)
+        {
+            records[i].Timestamp.Should().Be(DateTimeOffset.Parse(entries[i]["REALTIME_TIMESTAMP"], CultureInfo.InvariantCulture));
+            (records[i].Priority?.ToString(CultureInfo.InvariantCulture)).Should().Be(entries[i].GetValueOrDefault("PRIORITY"));
+            foreach (var field in fields.Names)
+                (records[i][field]?.Trim()).Should().Be(entries[i].GetValueOrDefault(field));
+        }
+    }
+}
+
+public sealed class JournalGenericSession_SeekRealTime
+{
+    [Fact]
+    public void Reports_a_time_before_1970_as_a_seek_error_in_any_time_zone()
+    {
+        using var session = new JournalGenericSession(() => new FakeSystemdJournal([]), () => { });
+
+        var act = () => session.SeekRealTime(DateTime.MinValue);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("Error seeking journal realtime.");
+    }
+}
+
+public sealed class JournalGenericSession_SetFilter_Replacing
+{
+    [Fact]
+    public void Reads_only_the_entries_of_the_last_filter()
+    {
+        List<FakeJournalEntry> entries =
+        [
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(1), "MESSAGE=a", "_SYSTEMD_UNIT=a.service"),
+            FakeJournalEntry.At(DateTimeOffset.UnixEpoch.AddDays(2), "MESSAGE=b", "_SYSTEMD_UNIT=b.service"),
+        ];
+        using var session = new JournalGenericSession(() => new FakeSystemdJournal(entries), () => { });
+        session.SetFilter("_SYSTEMD_UNIT=a.service");
+
+        session.SetFilter("_SYSTEMD_UNIT=b.service");
+        session.SeekHead();
+
+        session.GetLogs(10).Select(l => l["MESSAGE"]).Should().Equal("b");
     }
 }

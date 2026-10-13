@@ -66,4 +66,43 @@ public class Filter_
             addMatch("Field3=value");
         });
     }
+
+    [Fact]
+    public void Applies_a_disjunction_after_a_repeated_term()
+    {
+        var addMatch = Substitute.For<Action<string>>();
+        var addDisjunction = Substitute.For<Action>();
+
+        Filter.Apply("A=1,B=2+C=3,A=1+D=4", addMatch, addDisjunction);
+
+        Received.InOrder(() =>
+        {
+            addMatch("A=1");
+            addMatch("B=2");
+            addDisjunction();
+            addMatch("C=3");
+            addMatch("A=1");
+            addDisjunction();
+            addMatch("D=4");
+        });
+    }
+
+    [Fact]
+    public void Applies_a_disjunction_after_a_term_contained_in_an_earlier_one()
+    {
+        var addMatch = Substitute.For<Action<string>>();
+        var addDisjunction = Substitute.For<Action>();
+
+        Filter.Apply("A=10,B=1+A=1+C=3", addMatch, addDisjunction);
+
+        Received.InOrder(() =>
+        {
+            addMatch("A=10");
+            addMatch("B=1");
+            addDisjunction();
+            addMatch("A=1");
+            addDisjunction();
+            addMatch("C=3");
+        });
+    }
 }

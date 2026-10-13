@@ -1,43 +1,30 @@
 ﻿namespace ViciOne.Journal;
 
-internal class AccessControl(int limit) : IDisposable
+internal sealed class AccessControl(int limit, string busyMessage) : IDisposable
 {
     private readonly SemaphoreSlim _semaphore = new(limit, limit);
 
     public void Dispose()
         => _semaphore.Dispose();
 
-    internal async Task<IDisposable> Begin(CancellationToken cancellationToken)
+    /// <returns>The slot, released when it is disposed for the first time.</returns>
+    /// <exception cref="JournalBusyException">Thrown when all slots are taken.</exception>
+    internal IDisposable Acquire()
     {
-        ThrowIfAccessLimitReached();
-        await _semaphore.WaitAsync(cancellationToken);
-        return new Disposeable(() => _semaphore.Release());
+        if (!_semaphore.Wait(0))
+            throw new JournalBusyException(busyMessage);
+
+        return new Slot(_semaphore);
     }
 
-    internal async Task<T> Run<T>(Func<T> action, CancellationToken cancellationToken = default)
+    private sealed class Slot(SemaphoreSlim semaphore) : IDisposable
     {
-        ThrowIfAccessLimitReached();
-        await _semaphore.WaitAsync(cancellationToken);
+        private int _released;
 
-        try
-        {
-            return action();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    private void ThrowIfAccessLimitReached()
-    {
-        if (_semaphore.CurrentCount == 0)
-            throw new InvalidOperationException($"Access limit reached. Only {limit} concurrent accesses are permitted.");
-    }
-
-    private class Disposeable(Action dispose) : IDisposable
-    {
         public void Dispose()
-            => dispose();
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+                semaphore.Release();
+        }
     }
 }

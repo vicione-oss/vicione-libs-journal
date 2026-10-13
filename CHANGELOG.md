@@ -2,13 +2,43 @@
 
 ## Unreleased
 
+### Added
+
+- `IJournalGenericSession.SeekRealTime(DateTimeOffset)` seeks to an instant regardless of the device time zone
+- `IJournalService.GetPriorityHistogram` counts entries per time bucket, priority and systemd unit in one pass, with uniform buckets or explicit bucket edges
+- `JournalOptions.MaxSessions` and `JournalOptions.MaxConcurrentQueries` limit open sessions and running queries separately
+- `IJournalGenericSession.GetRecords` reads only the fields of a `JournalFieldSet`, with the timestamp as `DateTimeOffset`, the cursor and the priority, into a `JournalRecord`
+- `IJournalService.CreateFollower(interval, fields)` follows new entries as `JournalRecord` batches, one per interval
+- `IJournalService.ReadPage` reads `JournalRecord`s older or newer than a cursor or a time without holding a session
+- `IJournalService.GetTimeRange` returns the times of the oldest and the newest entry still in the journal
+- `JournalOptions.Directory` reads the journal files of a directory, such as a copy from another device
+
 ### Fixed
 
 - With `writeCustomKeyValues` enabled, log properties no longer overwrite `MESSAGE`, `PRIORITY` or `SYSLOG_STRUCTURED_DATA`, and no longer set fields that journald interprets (such as `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO` or `UNIT`). These properties are now written with a `PROP_` prefix, for example `PROP_MESSAGE`. Configured metadata fields are still written as-is
+- Fix filters ignoring a `+` that follows a term repeated from, or contained in, an earlier term
+- Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone
+- Fix `GetLogs` returning ascending order for `DESC` or any other case than `desc`
+- Fix filter values in double quotes never matching; the quotes are removed and no longer required for values with spaces
+- Fix follow sessions missing entries from journal files created after they opened, such as after a rotation
+- Fix `IJournalFollowSession.Start(logCount)` delivering one recent entry less than requested
+- Fix `SetFilter` on generic and follow sessions combining the new filter with the previous one instead of replacing it
+- Fix follow sessions raising `Error` when they are stopped or disposed while reading new entries
+- Fix `GetPriorityCounts(start, end)` throwing `KeyNotFoundException` for any interval that contains entries
+- Fix a session that failed to open keeping its slot
+- Fix disposing a session twice releasing two slots
+- Fix a caller waiting indefinitely instead of failing when it raced another caller for the last slot
 
 ### Changed
 
 - Serilog sink: when a metadata field and a log event property map to the same field name, the metadata field now takes precedence, as it already did in `JournalLogger`
+- Reverse `GetLogs` results for `desc` in linear instead of quadratic time
+- Count `GetPriorityCounts` without allocating per entry
+- `GetPriorityCounts` throws `OperationCanceledException` when cancelled and `ArgumentOutOfRangeException` for a `since` in the future, instead of `InvalidOperationException`
+- Open sessions no longer use up the slots of one-shot queries such as `GetLogs`
+- Throw `JournalBusyException`, an `InvalidOperationException`, when a limit is reached
+- Run one-shot queries and session creation off the caller's thread
+- Reuse up to `MaxConcurrentQueries` open journals for one-shot queries instead of opening one per call, which took about 30 ms on a desktop
 
 ## 1.2.0 - 2026-04-10
 

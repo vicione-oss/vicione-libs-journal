@@ -35,7 +35,7 @@ internal static partial class SystemdJournalLogs
     public static partial void LogSeekTail(this ILogger<SystemdJournal> logger);
 
     [LoggerMessage(EventId = 10, Level = LogLevel.Debug, Message = "SeekRealtime called with time: {Time}")]
-    public static partial void LogSeekRealtime(this ILogger<SystemdJournal> logger, DateTime time);
+    public static partial void LogSeekRealtime(this ILogger<SystemdJournal> logger, DateTimeOffset time);
 
     [LoggerMessage(EventId = 11, Level = LogLevel.Debug, Message = "SeekCursor called with cursor: {Cursor}")]
     public static partial void LogSeekCursor(this ILogger<SystemdJournal> logger, string cursor);
@@ -70,20 +70,11 @@ internal static partial class SystemdJournalLogs
     [LoggerMessage(EventId = 21, Level = LogLevel.Error, Message = "sd_journal_enumerate_unique failed with error {Ret}")]
     public static partial void LogEnumerateUniqueFailed(this ILogger<SystemdJournal> logger, int ret);
 
-    [LoggerMessage(EventId = 22, Level = LogLevel.Debug, Message = "GetPriorityCountsSince() called with since: {Since}")]
-    public static partial void LogGetPriorityCountsSince(this ILogger<SystemdJournal> logger, DateTime since);
-
-    [LoggerMessage(EventId = 23, Level = LogLevel.Debug, Message = "GetPriorityCountsBetween() called with start: {Start} and end: {End}")]
-    public static partial void LogGetPriorityCountsBetween(this ILogger<SystemdJournal> logger, DateTime start, DateTime end);
-
     [LoggerMessage(EventId = 24, Level = LogLevel.Error, Message = "{Function} failed with error {Ret}. Native error count: {Count}")]
     public static partial void LogNativeCallFailed(this ILogger<SystemdJournal> logger, string function, int ret, int count);
 
     [LoggerMessage(EventId = 25, Level = LogLevel.Warning, Message = "{Function} failed twice consecutively. Reinitializing journal connection.")]
     public static partial void LogReinitializeJournal(this ILogger<SystemdJournal> logger, string function);
-
-    [LoggerMessage(EventId = 26, Level = LogLevel.Debug, Message = "GetPriorityCountsBetween() finished. Processed counts: {Counts}")]
-    public static partial void LogGetPriorityCountsBetweenFinished(this ILogger<SystemdJournal> logger, string counts);
 
     [LoggerMessage(EventId = 27, Level = LogLevel.Debug, Message = "Previous() called.")]
     public static partial void LogPreviousCalled(this ILogger<SystemdJournal> logger);

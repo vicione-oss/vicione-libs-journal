@@ -10,7 +10,7 @@ public sealed class JournalLookBehindSessionExtensions_ToLookBehind
     public void ToLookBehind_extension_creates_session_from_generic()
     {
         using var genericSession = new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => { });
 
         using var lookBehindSession = genericSession.ToLookBehind();
@@ -23,7 +23,7 @@ public sealed class JournalLookBehindSessionExtensions_ToLookBehind
     public void ToLookBehind_session_can_retrieve_logs()
     {
         using var genericSession = new JournalGenericSession(
-            new JournalOptions { OpeningMode = JournalOpeningMode.LocalOnly },
+            () => new SystemdJournal(),
             () => { });
 
         using var lookBehindSession = genericSession.ToLookBehind();

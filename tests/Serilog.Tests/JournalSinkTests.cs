@@ -1,9 +1,11 @@
 ﻿using System.Globalization;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
 using Serilog.Events;
 using Serilog.Formatting.Display;
 using Serilog.Parsing;
 using Serilog.Sinks.Journal;
+using ViciOne.Journal;
 
 namespace Serilog.Tests;
 
@@ -53,7 +55,73 @@ public class JournalSink_
 
         result["MESSAGE"].Should().Be("2 is a test");
         result["TEST_ID"].Should().Be(1);
-        result["SYSLOG_STRUCTURED_DATA"].Should().Be("[journal@32473 TEST_ID=\"1\"]");
+        result["SYSLOG_STRUCTURED_DATA"].Should().Be("[journal@32473 TEST_ID=\"1\" MESSAGE_TEMPLATE=\"{TestId} is a test\"]");
+    }
+
+    [Fact]
+    public void Message_template_field_cannot_be_overridden_by_log_property()
+    {
+        var messageTemplate = new MessageTemplateParser().Parse("Request {MESSAGE_TEMPLATE} failed");
+        var logEvent = new LogEvent(DateTimeOffset.Now, LogEventLevel.Warning, null, messageTemplate,
+        [
+            new LogEventProperty("MESSAGE_TEMPLATE", new ScalarValue(1001)),
+        ]);
+
+        var fields = JournalSink.GetFieldsFromLogEvent(logEvent).ToList();
+
+        fields.Should().ContainSingle(field => field.Key == "MESSAGE_TEMPLATE")
+            .Which.Value.Should().Be("Request {MESSAGE_TEMPLATE} failed");
+    }
+
+    [Fact]
+    public void Message_template_field_cannot_be_impersonated_by_differently_cased_log_property()
+    {
+        var messageTemplate = new MessageTemplateParser().Parse("Request {MessageTemplate} failed");
+        var logEvent = new LogEvent(DateTimeOffset.Now, LogEventLevel.Warning, null, messageTemplate,
+        [
+            new LogEventProperty("MessageTemplate", new ScalarValue(1001)),
+        ]);
+
+        var fields = JournalSink.GetFieldsFromLogEvent(logEvent).ToList();
+
+        fields.Should().ContainSingle(field => field.Key == "MessageTemplate" || field.Key == "MESSAGE_TEMPLATE")
+            .Which.Value.Should().Be("Request {MessageTemplate} failed");
+    }
+
+    [Fact]
+    public void Excludes_message_template_from_fields_when_not_requested()
+    {
+        var messageTemplate = new MessageTemplateParser().Parse("Request {RequestId} failed");
+        var logEvent = new LogEvent(DateTimeOffset.Now, LogEventLevel.Warning, null, messageTemplate,
+        [
+            new LogEventProperty("RequestId", new ScalarValue(1001)),
+        ]);
+
+        var fields = JournalSink.GetFieldsFromLogEvent(logEvent, includeMessageTemplate: false).ToList();
+
+        fields.Should().NotContain(field => field.Key == "MESSAGE_TEMPLATE");
+    }
+
+    [Fact]
+    public void Does_not_leak_message_template_into_structured_data_when_custom_key_values_disabled()
+    {
+        // Mirrors what Emit() does: the default (writeCustomKeyValues=false,
+        // writeStructuredData=true, spam guard off) must not leak MESSAGE_TEMPLATE into
+        // SYSLOG_STRUCTURED_DATA. A top-level gate alone isn't enough, because CreateLogEntry
+        // builds structured data from every field it's handed, independent of
+        // writeCustomKeyValues.
+        var messageTemplate = new MessageTemplateParser().Parse("Request {RequestId} failed");
+        var logEvent = new LogEvent(DateTimeOffset.Now, LogEventLevel.Warning, null, messageTemplate,
+        [
+            new LogEventProperty("RequestId", new ScalarValue(1001)),
+        ]);
+
+        var fields = JournalSink.GetFieldsFromLogEvent(logEvent, includeMessageTemplate: false);
+        var entry = JournalEntryFactory.CreateLogEntry(fields, "Request 1001 failed", LogLevel.Warning,
+            writeCustomKeyValues: false, writeStructuredData: true);
+
+        entry.Should().NotContainKey("MESSAGE_TEMPLATE");
+        entry["SYSLOG_STRUCTURED_DATA"]?.ToString().Should().NotContain("MESSAGE_TEMPLATE");
     }
 
 #pragma warning disable xUnit1004

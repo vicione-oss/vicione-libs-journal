@@ -18,6 +18,7 @@ public sealed class JournalLoggerProvider : ILoggerProvider, ISupportExternalSco
     private readonly bool _writeStructuredData;
     private readonly bool _writeCustomKeyValues;
     private readonly JournalSpamAggregator? _spamAggregator;
+    private readonly IReadOnlySet<string> _spamGuardAggregationFields;
 
     public JournalLoggerProvider(IOptions<JournalLoggerOptions> options)
     {
@@ -32,13 +33,17 @@ public sealed class JournalLoggerProvider : ILoggerProvider, ISupportExternalSco
         _spamAggregator = options.Value.SpamGuard.Enabled
             ? new JournalSpamAggregator(options.Value.SpamGuard, ForwardToQueue)
             : null;
+        _spamGuardAggregationFields = options.Value.SpamGuard.Enabled
+            ? new HashSet<string>(JournalSpamAggregator.NormalizeFields(options.Value.SpamGuard), StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
     }
 
     public ILogger CreateLogger(string categoryName)
         => _loggers.GetOrAdd(categoryName, InitializeLogger);
 
     private JournalLogger InitializeLogger(string categoryName)
-        => new(_prefix, categoryName, _scopeProvider, Log, _metaData.ToDictionary(), _writeCustomKeyValues, _writeStructuredData);
+        => new(_prefix, categoryName, _scopeProvider, Log, _metaData.ToDictionary(), _writeCustomKeyValues, _writeStructuredData,
+            _spamGuardAggregationFields);
 
     public void Dispose()
     {

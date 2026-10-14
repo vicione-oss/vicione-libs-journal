@@ -12,9 +12,15 @@
 - `IJournalService.ReadPage` reads `JournalRecord`s older or newer than a cursor or a time without holding a session
 - `IJournalService.GetTimeRange` returns the times of the oldest and the newest entry still in the journal
 - `JournalOptions.Directory` reads the journal files of a directory, such as a copy from another device
+- EventId-based spam-guard aggregation: `EVENT_ID` is surfaced on log entries and can be listed in `AggregationFields` to collapse floods that share a call site but render unique text
+- Template-based spam-guard aggregation for the Serilog sink: `MESSAGE_TEMPLATE` is surfaced on log entries, with `JournalSpamGuardOptions.AggregateByMessageTemplate()` to configure it
+
+`EVENT_ID` and `MESSAGE_TEMPLATE` are only written when `WriteCustomKeyValues` is `true`, or when
+spam guard is enabled and the field is part of the active `AggregationFields`. EventId-based aggregation only applies to calls that pass an explicit `EventId`.
 
 ### Fixed
 
+- Log entries are no longer dropped when an entry lacks a field named in `AggregationFields`.
 - With `writeCustomKeyValues` enabled, log properties no longer overwrite `MESSAGE`, `PRIORITY` or `SYSLOG_STRUCTURED_DATA`, and no longer set fields that journald interprets (such as `SYSLOG_IDENTIFIER`, `SYSLOG_FACILITY`, `MESSAGE_ID`, `CODE_FILE`, `ERRNO` or `UNIT`). These properties are now written with a `PROP_` prefix, for example `PROP_MESSAGE`. Configured metadata fields are still written as-is
 - Fix filters ignoring a `+` that follows a term repeated from, or contained in, an earlier term
 - Fix `GetLogs` and `GetPriorityCounts` reading their times as local clock time, which shifted the range whenever the offset differed from the device time zone
